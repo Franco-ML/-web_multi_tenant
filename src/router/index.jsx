@@ -9,6 +9,11 @@ import AdvancedPage from '../pages/AdvancedPage'
 import ExportPage from '../pages/ExportPage'
 import SetupPage from '../pages/SetupPage'
 
+// import.meta.env.BASE_URL refleja el `base` del vite.config.js
+// (en dev: '/', en producción GitHub Pages: '/-web_multi_tenant/')
+// React Router necesita basename SIN trailing slash final.
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '')
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -29,4 +34,4 @@ export const router = createBrowserRouter([
       { path: 'i18n',         element: <Navigate to="/language" replace /> },
     ],
   },
-])
+], { basename })
