@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+server/data/
+*.local
+.DS_Store
+.claude/
+mmmmm.md
+image.png

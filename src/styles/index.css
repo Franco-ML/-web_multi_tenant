@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Variables for simulator ─────────────────────────── */
+:root {
+  --sim-primary: #E8175D;
+  --sim-primary-light: #FF6B96;
+  --sim-primary-dark: #B5104A;
+  --sim-success: #34C759;
+  --sim-warning: #FF9500;
+  --sim-error: #FF3B30;
+  --sim-info: #5856D6;
+  --sim-background: #FFFFFF;
+  --sim-background-secondary: #F2F2F7;
+  --sim-surface: #FFFFFF;
+  --sim-surface-secondary: #F8F8F8;
+  --sim-surface-elevated: #ECECEC;
+  --sim-text-primary: #000000;
+  --sim-text-secondary: #6C6C70;
+  --sim-text-disabled: #AEAEB2;
+  --sim-text-inverse: #FFFFFF;
+  --sim-border: #C6C6C8;
+  --sim-border-light: #E5E5EA;
+  --sim-border-focus: #E8175D;
+}
+
+/* ─── Global Reset & Base ──────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  font-family: 'Sora', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── Selection ────────────────────────────────────────────── */
+::selection {
+  background: rgba(232, 23, 93, 0.3);
+  color: #fff;
+}
+
+/* ─── Animations ───────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
