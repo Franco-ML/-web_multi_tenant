@@ -217,22 +217,22 @@ export const COUNTRY_CATALOG = [
 
 // ─── Config por defecto ────────────────────────────────────────────────────────
 
+// Config base de un tenant nuevo — sin datos hardcoded de ninguna empresa.
+// Todo lo que diga 'Moover', 'CR', etc. debe venir del usuario o del catálogo.
 const defaultConfig = {
   branding: {
-    name: 'Moover',
-    description: 'Plataforma de mensajería y logística',
-    primaryColor: '#E8175D',
+    name: '',
+    description: '',
+    primaryColor: '#E8175D',     // color de UI por defecto, no de marca
     logoUrl: '',
     logoPreviewUrl: null,
     logoFile: null,
   },
-  countryConfigs: [
-    { countryCode: 'CR', name: 'Costa Rica', flag: '🇨🇷', currency: 'CRC', currencySymbol: '₡', language: 'es-CR', phonePrefix: '+506', timezone: 'America/Costa_Rica', isPrimary: true, idTypes: null, documents: null },
-  ],
+  countryConfigs: [],            // vacío — el usuario elige desde el wizard/picker
   theme: {
-    colorMode: 'light',          // modo predeterminado para la app
-    light: { ...defaultColors }, // paleta claro — editable independientemente
-    dark:  { ...darkColors },    // paleta oscuro — editable independientemente
+    colorMode: 'light',
+    light: { ...defaultColors },
+    dark:  { ...darkColors },
   },
   login: {
     phoneEnabled: true,
@@ -256,8 +256,8 @@ const defaultConfig = {
     translations: { ...DEFAULT_TRANSLATIONS },
   },
   advanced: {
-    apiUrl: 'https://api.moover.tech',
-    tenantCode: 'moover',
+    apiUrl: '',
+    tenantCode: '',
     sentryDsn: '',
     googleMapsApiKey: '',
     appEnv: 'prod',
@@ -273,6 +273,11 @@ export const useTenantStore = create(
   persist(
     (set, get) => ({
   ...defaultConfig,
+
+  // País actualmente seleccionado para configurar (null = config base/general)
+  // Estado transitorio de UI, NO se persiste
+  activeCountry: null,
+  setActiveCountry: (countryCode) => set({ activeCountry: countryCode }),
 
   setBrandingField: (field, value) =>
     set((state) => ({ branding: { ...state.branding, [field]: value } })),
@@ -294,7 +299,12 @@ export const useTenantStore = create(
     set((state) => ({
       countryConfigs: state.countryConfigs.some(c => c.countryCode === country.countryCode)
         ? state.countryConfigs
-        : [...state.countryConfigs, { ...country, isPrimary: false, idTypes: null, documents: null }],
+        : [...state.countryConfigs, {
+            ...country,
+            isPrimary: false,
+            idTypes:   country.idTypes   !== undefined ? country.idTypes   : null,
+            documents: country.documents !== undefined ? country.documents : null,
+          }],
     })),
 
   removeCountry: (countryCode) =>

@@ -57,7 +57,7 @@ function StepIdentidad({ primaryColor }) {
         <input
           value={name}
           onChange={(e) => setBrandingField('name', e.target.value)}
-          placeholder="Ej. Moover"
+          placeholder="Nombre de la empresa"
           style={inputStyle}
           onFocus={(e) => e.target.style.borderColor = `${primaryColor}80`}
           onBlur={(e)  => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
@@ -215,7 +215,6 @@ function StepLocalizacion({ primaryColor }) {
   const addCountry        = useTenantStore((s) => s.addCountry)
   const removeCountry     = useTenantStore((s) => s.removeCountry)
   const setPrimaryCountry = useTenantStore((s) => s.setPrimaryCountry)
-  const updateCountry     = useTenantStore((s) => s.updateCountry)
 
   const [search, setSearch] = useState('')
 
@@ -245,20 +244,8 @@ function StepLocalizacion({ primaryColor }) {
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif' }}>
                   {cc.name}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace' }}>
-                    Idioma:
-                  </span>
-                  <input
-                    value={cc.language ?? ''}
-                    onChange={(e) => updateCountry(cc.countryCode, { language: e.target.value })}
-                    placeholder="es-CR"
-                    style={{
-                      padding: '2px 6px', fontSize: 9, fontFamily: 'Space Mono, monospace',
-                      background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: 4, color: 'rgba(255,255,255,0.7)', outline: 'none', width: 70,
-                    }}
-                  />
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace', marginTop: 3 }}>
+                  {cc.countryCode} · {cc.currency ?? '—'} {cc.currencySymbol ?? ''} · {cc.phonePrefix ?? '—'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>

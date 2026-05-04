@@ -403,17 +403,17 @@ export default function DashboardLayout() {
         scrollbarWidth: 'thin',
         scrollbarColor: 'rgba(255,255,255,0.1) transparent',
       }}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 36 }}
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
+        {/* Sin AnimatePresence/mode="wait" — causa que las páginas queden en blanco
+            tras navegar (StrictMode + key=pathname remonta el árbol). El `key` en
+            el div mantiene la transición de aparición sin riesgo de unmount-loop. */}
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 36 }}
+        >
+          <Outlet />
+        </motion.div>
       </main>
 
       {/* Simulator panel */}

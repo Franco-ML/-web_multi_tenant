@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams, useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Globe, Plus, X, ChevronDown, Star, Info } from 'lucide-react'
+import { Globe, Plus, X, ChevronDown, Star, Info, Layers, Check } from 'lucide-react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
 import PageHeader from '../components/ui/PageHeader'
 import SectionCard from '../components/config/SectionCard'
@@ -133,9 +134,13 @@ function CountryDocEditor({ country, globalRegistration, onSetIdTypes, onSetDocu
 
 // ─── Componente tarjeta de país ────────────────────────────────────────────────
 
-function CountryCard({ country, isPrimary, onRemove, onSetPrimary, onUpdate, globalRegistration, onSetIdTypes, onSetDocuments }) {
-  const [expanded, setExpanded] = useState(false)
+function CountryCard({ country, isPrimary, onRemove, onSetPrimary, onUpdate, globalRegistration, onSetIdTypes, onSetDocuments, forceExpanded = false }) {
+  const [expanded, setExpanded] = useState(forceExpanded)
   const [showDocs, setShowDocs] = useState(false)
+
+  useEffect(() => {
+    if (forceExpanded) setExpanded(true)
+  }, [forceExpanded, country.countryCode])
 
   return (
     <motion.div
@@ -336,14 +341,31 @@ function CountryFieldInput({ label, value, placeholder, onChange }) {
 
 // ─── Picker de país ────────────────────────────────────────────────────────────
 
-function AddCountryPicker({ existingCodes, onAdd, onClose }) {
+function AddCountryPicker({ existingCodes, onAddMany, onClose }) {
   const [search, setSearch] = useState('')
-  const [hovered, setHovered] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [inheritBase, setInheritBase] = useState(true)
 
   const filtered = COUNTRY_CATALOG.filter(c =>
     !existingCodes.includes(c.countryCode) &&
     (c.name.toLowerCase().includes(search.toLowerCase()) || c.countryCode.toLowerCase().includes(search.toLowerCase()))
   )
+
+  function toggle(code) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
+
+  function handleConfirm() {
+    if (selected.size === 0) return
+    const cats = COUNTRY_CATALOG.filter(c => selected.has(c.countryCode))
+    onAddMany(cats, { inheritBase })
+    onClose()
+  }
 
   return (
     <motion.div
@@ -360,6 +382,14 @@ function AddCountryPicker({ existingCodes, onAdd, onClose }) {
     >
       {/* Buscador */}
       <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.7)', fontFamily: 'Sora, sans-serif' }}>
+            Agregar países
+          </div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace' }}>
+            {selected.size > 0 ? `${selected.size} seleccionado${selected.size === 1 ? '' : 's'}` : 'click para seleccionar'}
+          </div>
+        </div>
         <input
           autoFocus
           value={search}
@@ -373,7 +403,7 @@ function AddCountryPicker({ existingCodes, onAdd, onClose }) {
         />
       </div>
 
-      {/* Grid de banderas */}
+      {/* Grid de banderas — toggleables */}
       <div style={{ padding: '12px 14px', maxHeight: 230, overflowY: 'auto' }}>
         {filtered.length === 0 ? (
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono', textAlign: 'center', padding: '16px 0' }}>
@@ -381,52 +411,122 @@ function AddCountryPicker({ existingCodes, onAdd, onClose }) {
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
-            {filtered.map(c => (
-              <button
-                key={c.countryCode}
-                onClick={() => { onAdd(c); onClose() }}
-                onMouseEnter={() => setHovered(c.countryCode)}
-                onMouseLeave={() => setHovered(null)}
-                title={`${c.name} (${c.countryCode})`}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                  padding: '8px 6px', borderRadius: 9, cursor: 'pointer',
-                  background: hovered === c.countryCode ? 'rgba(232,23,93,0.1)' : 'rgba(255,255,255,0.03)',
-                  border: hovered === c.countryCode ? '1px solid rgba(232,23,93,0.3)' : '1px solid rgba(255,255,255,0.07)',
-                  transition: 'all 0.12s ease',
-                }}
-              >
-                <div style={{ width: 44, height: 30, borderRadius: 5, overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
-                  <FlagImage
-                    code={c.countryCode}
-                    size={44}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }}
-                  />
-                </div>
-                <div style={{
-                  fontSize: 8, fontFamily: 'Space Mono, monospace', fontWeight: 700,
-                  color: hovered === c.countryCode ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)',
-                  textAlign: 'center', lineHeight: 1.2, letterSpacing: '0.02em',
-                  transition: 'color 0.12s ease',
-                }}>
-                  {c.countryCode}
-                </div>
-              </button>
-            ))}
+            {filtered.map(c => {
+              const isSelected = selected.has(c.countryCode)
+              return (
+                <button
+                  key={c.countryCode}
+                  onClick={() => toggle(c.countryCode)}
+                  title={`${c.name} (${c.countryCode})`}
+                  style={{
+                    position: 'relative',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    padding: '8px 6px', borderRadius: 9, cursor: 'pointer',
+                    background: isSelected ? 'rgba(232,23,93,0.18)' : 'rgba(255,255,255,0.03)',
+                    border: isSelected ? '1px solid rgba(232,23,93,0.6)' : '1px solid rgba(255,255,255,0.07)',
+                    transition: 'all 0.12s ease',
+                  }}
+                  onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.background = 'rgba(232,23,93,0.08)'; e.currentTarget.style.borderColor = 'rgba(232,23,93,0.25)' } }}
+                  onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' } }}
+                >
+                  {isSelected && (
+                    <div style={{
+                      position: 'absolute', top: 4, right: 4,
+                      width: 14, height: 14, borderRadius: '50%',
+                      background: '#E8175D',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                    }}>
+                      <Check size={9} color="#fff" strokeWidth={3} />
+                    </div>
+                  )}
+                  <div style={{ width: 44, height: 30, borderRadius: 5, overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
+                    <FlagImage
+                      code={c.countryCode}
+                      size={44}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }}
+                    />
+                  </div>
+                  <div style={{
+                    fontSize: 8, fontFamily: 'Space Mono, monospace', fontWeight: 700,
+                    color: isSelected ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.4)',
+                    textAlign: 'center', lineHeight: 1.2, letterSpacing: '0.02em',
+                    transition: 'color 0.12s ease',
+                  }}>
+                    {c.countryCode}
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
       </div>
 
-      <div style={{ padding: '8px 14px 10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      {/* Toggle: heredar config base */}
+      <div style={{
+        padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(255,255,255,0.02)',
+      }}>
+        <button
+          onClick={() => setInheritBase(v => !v)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '8px 10px', borderRadius: 8,
+            background: inheritBase ? 'rgba(232,23,93,0.06)' : 'rgba(255,255,255,0.03)',
+            border: inheritBase ? '1px solid rgba(232,23,93,0.25)' : '1px solid rgba(255,255,255,0.08)',
+            cursor: 'pointer', textAlign: 'left',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{
+            width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 1,
+            background: inheritBase ? '#E8175D' : 'transparent',
+            border: inheritBase ? 'none' : '1.5px solid rgba(255,255,255,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.15s ease',
+          }}>
+            {inheritBase && <Check size={11} color="#fff" strokeWidth={3} />}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif', marginBottom: 2 }}>
+              Heredar configuración base
+            </div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace', lineHeight: 1.5 }}>
+              {inheritBase
+                ? 'Tipos de ID y documentos se toman del registro global'
+                : 'Empezarás con copia editable de los tipos de ID y documentos globales'}
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {/* Acciones */}
+      <div style={{ padding: '10px 14px 12px', display: 'flex', gap: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <button
           onClick={onClose}
           style={{
-            width: '100%', padding: '7px', borderRadius: 8, border: 'none',
-            background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)',
-            fontSize: 10, fontFamily: 'Sora', cursor: 'pointer',
+            flex: 1, padding: '8px', borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'transparent', color: 'rgba(255,255,255,0.5)',
+            fontSize: 10, fontFamily: 'Sora, sans-serif', cursor: 'pointer',
           }}
         >
           Cancelar
+        </button>
+        <button
+          onClick={handleConfirm}
+          disabled={selected.size === 0}
+          style={{
+            flex: 2, padding: '8px', borderRadius: 8, border: 'none',
+            background: selected.size === 0 ? 'rgba(232,23,93,0.3)' : '#E8175D',
+            color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'Sora, sans-serif',
+            cursor: selected.size === 0 ? 'not-allowed' : 'pointer',
+            transition: 'background 0.15s ease',
+          }}
+        >
+          {selected.size === 0
+            ? 'Selecciona países'
+            : `Agregar ${selected.size} país${selected.size === 1 ? '' : 'es'}`}
         </button>
       </div>
     </motion.div>
@@ -438,42 +538,140 @@ function AddCountryPicker({ existingCodes, onAdd, onClose }) {
 export default function LocalePage() {
   const countries         = useTenantStore((s) => s.countryConfigs)
   const registration      = useTenantStore((s) => s.registration)
+  const activeCountry     = useTenantStore((s) => s.activeCountry)
+  const setActiveCountry  = useTenantStore((s) => s.setActiveCountry)
   const addCountry        = useTenantStore((s) => s.addCountry)
   const removeCountry     = useTenantStore((s) => s.removeCountry)
   const updateCountry     = useTenantStore((s) => s.updateCountry)
   const setPrimary        = useTenantStore((s) => s.setPrimaryCountry)
   const setCountryIdTypes = useTenantStore((s) => s.setCountryIdTypes)
   const setCountryDocs    = useTenantStore((s) => s.setCountryDocuments)
+  const setupComplete     = useTenantStore((s) => s.advanced._setupComplete === true)
+  const tenantCode        = useTenantStore((s) => s.advanced.tenantCode)
 
-  const [showPicker, setShowPicker] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const wantsAdd = searchParams.get('add') === '1'
+  const [showPicker, setShowPicker] = useState(wantsAdd)
+
+  // Si vienes con ?add=1 desde el sidebar, abre el picker y limpia la URL
+  useEffect(() => {
+    if (wantsAdd) {
+      setShowPicker(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [wantsAdd, setSearchParams])
+
+  // Bloqueo (después de todos los hooks): si no hay tenant o setup base no está completo
+  if (!tenantCode) return <Navigate to="/branding" replace />
+  if (!setupComplete) return <Navigate to="/setup" replace />
+
   const existingCodes = countries.map(c => c.countryCode)
+  const country = activeCountry
+    ? countries.find(c => c.countryCode === activeCountry)
+    : null
+
+  // Cuando se elimina el país activo, resetear a base
+  function handleRemove(code) {
+    removeCountry(code)
+    if (code === activeCountry) setActiveCountry(null)
+  }
+
+  // Cuando se agregan países, selecciona el primero como activo
+  function handleAddMany(cats, { inheritBase }) {
+    // Si NO hereda base → copiar idTypes/documents del registro global como override
+    const globalStep = registration?.steps?.[0]
+    const globalIdTypes  = globalStep?.fields?.find(f => f.key === 'identificationTypeId')?.options ?? []
+    const globalDocs     = globalStep?.documents ?? []
+
+    cats.forEach(cat => {
+      const init = inheritBase
+        ? { ...cat, idTypes: null, documents: null }
+        : {
+            ...cat,
+            idTypes:   globalIdTypes.map(t => ({ ...t })),
+            documents: globalDocs.map(d => ({ ...d })),
+          }
+      addCountry(init)
+    })
+
+    if (cats.length > 0) setActiveCountry(cats[0].countryCode)
+    setShowPicker(false)
+  }
 
   return (
     <div>
       <PageHeader
-        title="Localización"
-        subtitle="Config por país. Heredan la base (identidad, tema, módulos) y pueden personalizarse individualmente."
+        title={country ? `Configuración — ${country.name}` : 'Localización'}
+        subtitle={country
+          ? `Override de ${country.countryCode}. Hereda la config base, ajusta solo lo que cambia para este país.`
+          : 'Selecciona un país desde el selector lateral para configurarlo, o agrega uno nuevo.'
+        }
         icon={Globe}
       />
 
-      {/* Lista de países */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-        <AnimatePresence mode="popLayout">
-          {countries.map((c) => (
-            <CountryCard
-              key={c.countryCode}
-              country={c}
-              isPrimary={c.isPrimary === true}
-              globalRegistration={registration}
-              onRemove={removeCountry}
-              onSetPrimary={setPrimary}
-              onUpdate={updateCountry}
-              onSetIdTypes={(cc, types) => setCountryIdTypes(cc, types)}
-              onSetDocuments={(cc, docs) => setCountryDocs(cc, docs)}
-            />
-          ))}
-        </AnimatePresence>
-      </div>
+      {/* Estado: hay un país activo → editor del país */}
+      {country && (
+        <div style={{ marginBottom: 16 }}>
+          <CountryCard
+            country={country}
+            isPrimary={country.isPrimary === true}
+            globalRegistration={registration}
+            onRemove={handleRemove}
+            onSetPrimary={setPrimary}
+            onUpdate={updateCountry}
+            onSetIdTypes={(cc, types) => setCountryIdTypes(cc, types)}
+            onSetDocuments={(cc, docs) => setCountryDocs(cc, docs)}
+            forceExpanded
+          />
+        </div>
+      )}
+
+      {/* Estado: sin país activo → vista panorámica */}
+      {!country && countries.length > 0 && (
+        <div style={{
+          padding: '20px 22px', borderRadius: 14,
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          marginBottom: 14,
+        }}>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+            Países configurados ({countries.length})
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {countries.map(c => (
+              <button
+                key={c.countryCode}
+                onClick={() => setActiveCountry(c.countryCode)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '7px 11px', borderRadius: 8,
+                  border: c.isPrimary ? '1px solid rgba(232,23,93,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                  background: c.isPrimary ? 'rgba(232,23,93,0.08)' : 'rgba(255,255,255,0.03)',
+                  cursor: 'pointer', transition: 'all 0.12s ease',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = c.isPrimary ? 'rgba(232,23,93,0.08)' : 'rgba(255,255,255,0.03)'}
+              >
+                <div style={{ width: 22, height: 16, borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
+                  <FlagImage code={c.countryCode} size={22} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.8)', fontFamily: 'Sora, sans-serif' }}>
+                  {c.name}
+                </span>
+                {c.isPrimary && (
+                  <span style={{
+                    fontSize: 7, padding: '1px 4px', borderRadius: 3,
+                    background: 'rgba(232,23,93,0.2)', color: '#E8175D',
+                    fontFamily: 'Space Mono, monospace', fontWeight: 700, letterSpacing: '0.05em',
+                  }}>
+                    PRIMARIO
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Botón agregar + picker */}
       <div style={{ position: 'relative' }}>
@@ -500,7 +698,7 @@ export default function LocalePage() {
           {showPicker && (
             <AddCountryPicker
               existingCodes={existingCodes}
-              onAdd={addCountry}
+              onAddMany={handleAddMany}
               onClose={() => setShowPicker(false)}
             />
           )}
@@ -518,8 +716,9 @@ export default function LocalePage() {
         <div style={{ display: 'flex', gap: 8 }}>
           <Info size={12} color="rgba(147,197,253,0.6)" style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
-            El <strong style={{ color: 'rgba(147,197,253,0.8)' }}>país principal</strong> define la moneda y prefijo
-            predeterminados. Todos los países comparten branding y módulos — solo cambia la configuración local.
+            Cada país <strong style={{ color: 'rgba(147,197,253,0.8)' }}>hereda la config base</strong>
+            (identidad, tema, módulos, idiomas) y solo personaliza moneda, idioma local, documentos y tipos de ID.
+            Cambia el país desde el selector lateral.
           </span>
         </div>
       </div>

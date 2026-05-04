@@ -121,7 +121,7 @@ export function useTenantManager() {
     setSwitching(false)
   }, [])
 
-  const createTenant = useCallback(({ id, name, countryCode }) => {
+  const createTenant = useCallback(({ id, name, countryCodes = [], countryCode }) => {
     const store = useTenantStore.getState()
     const currentCode = store.advanced.tenantCode
 
@@ -131,11 +131,17 @@ export function useTenantManager() {
     store.setAdvancedField('tenantCode', id.trim())
     store.setBrandingField('name', name.trim())
 
-    if (countryCode) {
-      const cat = COUNTRY_CATALOG.find(c => c.countryCode === countryCode)
-      if (cat) {
-        store.setCountryConfigs([{ ...cat, isPrimary: true, idTypes: null, documents: null }])
-      }
+    // Compatibilidad: aceptar countryCode (singular) o countryCodes (array)
+    const codes = countryCodes.length > 0
+      ? countryCodes
+      : (countryCode ? [countryCode] : [])
+
+    if (codes.length > 0) {
+      const configs = codes
+        .map(code => COUNTRY_CATALOG.find(c => c.countryCode === code))
+        .filter(Boolean)
+        .map((cat, i) => ({ ...cat, isPrimary: i === 0, idTypes: null, documents: null }))
+      store.setCountryConfigs(configs)
     }
 
     // Guardar draft inmediatamente para que aparezca en la lista sin publicar

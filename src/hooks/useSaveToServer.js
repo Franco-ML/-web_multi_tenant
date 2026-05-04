@@ -11,7 +11,14 @@ export function useSaveToServer() {
 
   const publish = useCallback(async () => {
     const { advanced, exportToJson } = useTenantStore.getState()
-    const tenantCode = advanced.tenantCode || 'moover'
+    const tenantCode = advanced.tenantCode?.trim()
+
+    if (!tenantCode) {
+      setError('No hay tenant activo — crea uno antes de publicar')
+      setStatus('error')
+      setTimeout(() => setStatus('idle'), 5000)
+      return
+    }
 
     setStatus('saving')
     setError(null)

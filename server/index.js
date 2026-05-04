@@ -139,7 +139,7 @@ app.get('/admin/tenants', (_req, res) => {
 app.get('/health', (_req, res) => res.json({ ok: true, port: PORT }))
 
 app.listen(PORT, () => {
-  console.log(`\n  🚀 Moover Tenant API corriendo en http://localhost:${PORT}`)
+  console.log(`\n  🚀 Tenant API corriendo en http://localhost:${PORT}`)
   console.log(`     GET  /mobile/bootstrap  (X-Tenant-Code: <code>  o  ?tenant=<code>)`)
   console.log(`     GET  /public/tenant/config?tenantCode=<code>`)
   console.log(`     POST /admin/tenant/:tenantCode`)
