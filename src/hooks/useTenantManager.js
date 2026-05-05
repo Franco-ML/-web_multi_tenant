@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
+import { apiFetch } from '../lib/api'
 
 const SERVER_URL = import.meta.env.VITE_TENANT_API_URL ?? 'http://localhost:3001'
 const DRAFT_PREFIX = 'moover-draft-'
@@ -85,7 +86,7 @@ export function useTenantManager() {
     }
 
     try {
-      const res  = await fetch(`${SERVER_URL}/admin/tenants`)
+      const res  = await apiFetch(`${SERVER_URL}/admin/tenants`)
       const data = await res.json()
       setTenants(merge(data.tenants ?? []))
     } catch {
@@ -110,7 +111,7 @@ export function useTenantManager() {
 
     setSwitching(true)
     try {
-      const res = await fetch(`${SERVER_URL}/public/tenant/config?tenantCode=${targetCode}`)
+      const res = await apiFetch(`${SERVER_URL}/public/tenant/config?tenantCode=${targetCode}`)
       if (!res.ok) throw new Error('not found')
       const data = await res.json()
       store.loadFromJson(data)
@@ -157,7 +158,7 @@ export function useTenantManager() {
     let sourceConfig = sourceDraft
     if (!sourceConfig) {
       try {
-        const res = await fetch(`${SERVER_URL}/public/tenant/config?tenantCode=${sourceCode}`)
+        const res = await apiFetch(`${SERVER_URL}/public/tenant/config?tenantCode=${sourceCode}`)
         if (res.ok) sourceConfig = await res.json()
       } catch {}
     }

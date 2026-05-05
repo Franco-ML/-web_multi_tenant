@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useTenantStore } from '../store/useTenantStore'
 import { clearDraft } from './useTenantManager'
+import { apiFetch } from '../lib/api'
 
 const SERVER_URL = import.meta.env.VITE_TENANT_API_URL ?? 'http://localhost:3001'
 
@@ -27,7 +28,7 @@ export function useSaveToServer() {
       const json = exportToJson()
       const body = JSON.parse(json)
 
-      const res = await fetch(`${SERVER_URL}/admin/tenant/${tenantCode}`, {
+      const res = await apiFetch(`${SERVER_URL}/admin/tenant/${tenantCode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

@@ -8,6 +8,7 @@ import LanguagePage from '../pages/LanguagePage'
 import AdvancedPage from '../pages/AdvancedPage'
 import ExportPage from '../pages/ExportPage'
 import SetupPage from '../pages/SetupPage'
+import CountriesPage from '../pages/CountriesPage'
 
 // import.meta.env.BASE_URL refleja el `base` del vite.config.js
 // (en dev: '/', en producción GitHub Pages: '/-web_multi_tenant/')
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: 'advanced',     element: <AdvancedPage /> },
       { path: 'export',       element: <ExportPage /> },
       { path: 'setup',        element: <SetupPage /> },
+      { path: 'countries',    element: <CountriesPage /> },
       // Redirecciones de rutas antiguas
       { path: 'features',     element: <Navigate to="/modules" replace /> },
       { path: 'registration', element: <Navigate to="/modules" replace /> },

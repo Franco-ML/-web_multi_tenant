@@ -229,6 +229,7 @@ const defaultConfig = {
     logoFile: null,
   },
   countryConfigs: [],            // vacío — el usuario elige desde el wizard/picker
+  countryVersions: [],           // archivo de snapshots cuando se cambia herencia
   theme: {
     colorMode: 'light',
     light: { ...defaultColors },
@@ -341,6 +342,168 @@ export const useTenantStore = create(
       countryConfigs: state.countryConfigs.map(c =>
         c.countryCode === countryCode ? { ...c, documents: docsOrNull } : c
       ),
+    })),
+
+  // ─── Acciones del nuevo modelo de país (v6) ────────────────────────────────
+
+  // Crear un país. mode = 'inherit-base' | 'inherit-from' | 'own'
+  // sourceId solo para mode='inherit-from'
+  // perModule solo para mode='inherit-from' personalizada (mapa Module → 'inherit'|'override-base'|'custom')
+  createCountry: (catEntry, { mode, sourceId, perModule, customModules } = {}) => {
+    const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `cc-${catEntry.countryCode}-${Date.now()}`
+    const now = new Date().toISOString()
+    const allInherit = {
+      branding: 'inherit', theme: 'inherit', features: 'inherit',
+      registration: 'inherit', i18n: 'inherit', login: 'inherit', advanced: 'inherit',
+    }
+    const newCountry = {
+      ...catEntry,
+      id,
+      isPrimary: false,
+      idTypes: null,
+      documents: null,
+      moduleModes:   perModule ?? allInherit,
+      customModules: customModules ?? {},
+      createdAt: now,
+      updatedAt: now,
+      totalSteps: 7,
+      draftStep: 0,
+    }
+    if (mode === 'inherit-base') {
+      newCountry.inheritsFrom = 'base'
+      newCountry.status = 'active'
+    } else if (mode === 'inherit-from') {
+      newCountry.inheritsFrom = sourceId
+      newCountry.status = 'active'
+    } else {
+      // own
+      newCountry.inheritsFrom = null
+      newCountry.status = 'draft'
+    }
+    set((state) => ({
+      countryConfigs: state.countryConfigs.some(c => c.countryCode === catEntry.countryCode)
+        ? state.countryConfigs
+        : [...state.countryConfigs, newCountry],
+    }))
+    return id
+  },
+
+  // Avanza el draftStep del wizard (modo 'own')
+  setCountryDraftStep: (countryId, step, customModulesPatch) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c =>
+        c.id === countryId
+          ? {
+              ...c,
+              draftStep: step,
+              customModules: customModulesPatch
+                ? { ...c.customModules, ...customModulesPatch }
+                : c.customModules,
+              updatedAt: new Date().toISOString(),
+            }
+          : c
+      ),
+    })),
+
+  // Marca un draft como completo → status active
+  finalizeCountry: (countryId) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c =>
+        c.id === countryId
+          ? { ...c, status: 'active', updatedAt: new Date().toISOString() }
+          : c
+      ),
+    })),
+
+  // Cambia la herencia. cascadeChildren: si true, hijos pasan a apuntar al mismo nuevo padre.
+  // Archiva snapshot del país antes de modificar.
+  setCountryInheritance: (countryId, newSource, { cascadeChildren = false, perModule, customModules } = {}) =>
+    set((state) => {
+      const target = state.countryConfigs.find(c => c.id === countryId)
+      if (!target) return state
+      const snapshot = { ...target }
+      const versions = [
+        ...state.countryVersions,
+        {
+          id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `v-${Date.now()}`,
+          countryId,
+          snapshot,
+          reason: 'inheritance-change',
+          archivedAt: new Date().toISOString(),
+        },
+      ]
+      const updated = state.countryConfigs.map(c => {
+        if (c.id === countryId) {
+          return {
+            ...c,
+            inheritsFrom: newSource,
+            moduleModes: perModule ?? c.moduleModes,
+            customModules: customModules ?? c.customModules,
+            updatedAt: new Date().toISOString(),
+          }
+        }
+        if (cascadeChildren && c.inheritsFrom === countryId) {
+          return { ...c, inheritsFrom: newSource, updatedAt: new Date().toISOString() }
+        }
+        return c
+      })
+      return { countryConfigs: updated, countryVersions: versions }
+    }),
+
+  // Cambia el modo de herencia de un módulo específico de un país
+  setCountryModuleMode: (countryId, moduleKey, mode) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c =>
+        c.id === countryId
+          ? {
+              ...c,
+              moduleModes: { ...c.moduleModes, [moduleKey]: mode },
+              updatedAt: new Date().toISOString(),
+            }
+          : c
+      ),
+    })),
+
+  setCountryCustomModule: (countryId, moduleKey, value) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c =>
+        c.id === countryId
+          ? {
+              ...c,
+              customModules: { ...c.customModules, [moduleKey]: value },
+              updatedAt: new Date().toISOString(),
+            }
+          : c
+      ),
+    })),
+
+  deactivateCountry: (countryId) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c =>
+        c.id === countryId
+          ? { ...c, status: 'inactive', isPrimary: false, updatedAt: new Date().toISOString() }
+          : c
+      ),
+    })),
+
+  reactivateCountry: (countryId) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c =>
+        c.id === countryId
+          ? { ...c, status: 'active', updatedAt: new Date().toISOString() }
+          : c
+      ),
+    })),
+
+  // Setea isPrimary=true SOLO en el país activo del id, todos los demás false
+  setPrimaryCountryById: (countryId) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c => ({
+        ...c,
+        isPrimary: c.id === countryId && c.status === 'active',
+      })),
     })),
 
   // palette: 'light' | 'dark'
@@ -540,7 +703,7 @@ export const useTenantStore = create(
     }),
     {
       name: 'moover-tenant-config',
-      version: 5,
+      version: 6,
       migrate: (saved, version) => {
         if (version < 2) {
           if (saved.theme?.colors) {
@@ -580,17 +743,41 @@ export const useTenantStore = create(
           // tenants existentes ya están configurados — no mostrar wizard
           if (saved.advanced._setupComplete === undefined) saved.advanced._setupComplete = true
         }
+        if (version < 6) {
+          // Nuevo modelo de país: status / inheritance / moduleModes / customModules / draftStep
+          // Países existentes pasan a status='active' heredando 'base' (comportamiento previo).
+          if (Array.isArray(saved.countryConfigs)) {
+            saved.countryConfigs = saved.countryConfigs.map(c => ({
+              ...c,
+              id:            c.id ?? (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `cc-${c.countryCode}-${Date.now()}`),
+              status:        c.status ?? 'active',
+              inheritsFrom:  c.inheritsFrom ?? 'base',
+              moduleModes:   c.moduleModes ?? {
+                branding: 'inherit', theme: 'inherit', features: 'inherit',
+                registration: 'inherit', i18n: 'inherit', login: 'inherit', advanced: 'inherit',
+              },
+              customModules: c.customModules ?? {},
+              draftStep:     c.draftStep ?? 0,
+              totalSteps:    c.totalSteps ?? 7,
+              createdAt:     c.createdAt ?? new Date().toISOString(),
+              updatedAt:     c.updatedAt ?? new Date().toISOString(),
+            }))
+          }
+          // Snapshot archive store (vacío al migrar)
+          if (!saved.countryVersions) saved.countryVersions = []
+        }
         return saved
       },
       partialize: (state) => ({
-        branding:       { ...state.branding, logoFile: null },
-        countryConfigs: state.countryConfigs,
-        theme:          state.theme,
-        login:          state.login,
-        features:       state.features,
-        registration:   state.registration,
-        i18n:           state.i18n,
-        advanced:       state.advanced,
+        branding:        { ...state.branding, logoFile: null },
+        countryConfigs:  state.countryConfigs,
+        countryVersions: state.countryVersions,
+        theme:           state.theme,
+        login:           state.login,
+        features:        state.features,
+        registration:    state.registration,
+        i18n:            state.i18n,
+        advanced:        state.advanced,
       }),
     }
   )

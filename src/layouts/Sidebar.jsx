@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Palette, Settings, Languages,
-  FileJson, Package, ChevronRight, Zap, Globe, LayoutGrid,
+  FileJson, Package, ChevronRight, Zap, Globe, Globe2, LayoutGrid,
   ChevronDown, Plus, Check, Loader, X, Layers,
 } from 'lucide-react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/modules',   label: 'Módulos',      desc: 'Pantallas y funciones', Icon: LayoutGrid },
   { to: '/language',  label: 'Idiomas',      desc: 'Idioma predeterminado', Icon: Languages },
   { to: '/advanced',  label: 'Avanzado',     desc: 'API y credenciales',    Icon: Settings },
+  { to: '/countries', label: 'Países',       desc: 'Herencias y estado',    Icon: Globe2, requiresSetup: true },
   { to: '/export',    label: 'Exportar',     desc: 'JSON del tenant',       Icon: FileJson },
 ]
 
@@ -232,6 +233,8 @@ function TenantSwitcher({ primaryColor, onOpenCreateModal }) {
 }
 
 function NavGroup({ label, items, primaryColor }) {
+  const setupComplete = useTenantStore((s) => s.advanced._setupComplete === true)
+  const visible = items.filter(i => !i.requiresSetup || setupComplete)
   return (
     <div>
       <div style={{
@@ -245,7 +248,7 @@ function NavGroup({ label, items, primaryColor }) {
       }}>
         {label}
       </div>
-      {items.map(({ to, label: itemLabel, desc, Icon }) => (
+      {visible.map(({ to, label: itemLabel, desc, Icon }) => (
         <NavLink
           key={to}
           to={to}
@@ -319,13 +322,16 @@ function NavGroup({ label, items, primaryColor }) {
 
 // ─── Country switcher ─────────────────────────────────────────────────────────
 
-function CountrySwitcher({ primaryColor, onAddCountry }) {
+function CountrySwitcher({ primaryColor }) {
   const navigate         = useNavigate()
   const countryConfigs   = useTenantStore((s) => s.countryConfigs)
   const activeCountry    = useTenantStore((s) => s.activeCountry)
   const setActiveCountry = useTenantStore((s) => s.setActiveCountry)
   const setupComplete    = useTenantStore((s) => s.advanced._setupComplete === true)
   const tenantCode       = useTenantStore((s) => s.advanced.tenantCode)
+
+  const activeCountries = countryConfigs.filter(c => (c.status ?? 'active') === 'active')
+  const draftCountries  = countryConfigs.filter(c => c.status === 'draft')
 
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -439,8 +445,8 @@ function CountrySwitcher({ primaryColor, onAddCountry }) {
 
             <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 8px' }} />
 
-            {/* Países del tenant */}
-            {countryConfigs.map(c => (
+            {/* Países activos del tenant */}
+            {activeCountries.map(c => (
               <button
                 key={c.countryCode}
                 onClick={() => pickCountry(c.countryCode)}
@@ -479,9 +485,46 @@ function CountrySwitcher({ primaryColor, onAddCountry }) {
               </button>
             ))}
 
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 8px' }} />
+            {/* Países en construcción (drafts) — al click llevan al wizard */}
+            {draftCountries.length > 0 && (
+              <>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 8px' }} />
+                <div style={{
+                  fontSize: 7, fontWeight: 700, color: 'rgba(255,180,0,0.5)',
+                  textTransform: 'uppercase', letterSpacing: '0.1em',
+                  padding: '8px 10px 4px', fontFamily: 'Space Mono, monospace',
+                }}>
+                  En construcción
+                </div>
+                {draftCountries.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setOpen(false); navigate(`/countries/wizard/${c.id}`) }}
+                    style={{
+                      width: '100%', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 7,
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,180,0,0.08)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{ width: 18, height: 13, borderRadius: 2, overflow: 'hidden', flexShrink: 0, opacity: 0.6 }}>
+                      <FlagImage code={c.countryCode} size={18} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'left' }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.6)', fontFamily: 'Sora, sans-serif' }}>
+                        {c.name ?? c.countryCode}
+                      </div>
+                      <div style={{ fontSize: 8, color: 'rgba(255,180,0,0.5)', fontFamily: 'Space Mono, monospace' }}>
+                        DRAFT · {c.draftStep ?? 0}/{c.totalSteps ?? 7}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </>
+            )}
 
-            {/* Agregar país — solo si setup base completo */}
+            {/* Aviso: la creación de países se hace en /countries */}
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 8px' }} />
             {!tenantCode ? (
               <div style={{
                 padding: '10px 12px', fontSize: 9, color: 'rgba(255,255,255,0.3)',
@@ -504,12 +547,12 @@ function CountrySwitcher({ primaryColor, onAddCountry }) {
                   Termina la config base primero
                 </div>
                 <div style={{ fontSize: 8, color: 'rgba(255,180,0,0.5)', fontFamily: 'Space Mono, monospace', lineHeight: 1.5, textAlign: 'left' }}>
-                  Para agregar países necesitas completar identidad, tema y localización general → ir al wizard
+                  Para gestionar países necesitas completar identidad, tema y localización general
                 </div>
               </button>
             ) : (
               <button
-                onClick={() => { setOpen(false); onAddCountry() }}
+                onClick={() => { setOpen(false); navigate('/countries') }}
                 style={{
                   width: '100%', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6,
                   background: 'transparent', border: 'none', cursor: 'pointer',
@@ -518,9 +561,9 @@ function CountrySwitcher({ primaryColor, onAddCountry }) {
                 onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.75)'}
                 onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
               >
-                <Plus size={11} />
+                <Globe2 size={11} />
                 <span style={{ fontSize: 10, fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
-                  Agregar país de operación
+                  Gestionar países
                 </span>
               </button>
             )}
@@ -847,15 +890,8 @@ function FieldLabel({ children }) {
 }
 
 export default function Sidebar() {
-  const navigate     = useNavigate()
   const primaryColor = useTenantStore((s) => s.theme.light?.primary ?? '#E8175D')
   const [createOpen, setCreateOpen] = useState(false)
-
-  function handleAddCountry() {
-    // Reusa la página de Localización con un flag transitorio
-    // El usuario verá el editor de país y el botón de "agregar"
-    navigate('/locale?add=1')
-  }
 
   return (
     <>
@@ -915,7 +951,7 @@ export default function Sidebar() {
         </div>
 
         <TenantSwitcher primaryColor={primaryColor} onOpenCreateModal={() => setCreateOpen(true)} />
-        <CountrySwitcher primaryColor={primaryColor} onAddCountry={handleAddCountry} />
+        <CountrySwitcher primaryColor={primaryColor} />
       </div>
 
       {/* Navigation */}

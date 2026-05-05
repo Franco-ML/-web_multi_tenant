@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, CheckCircle, AlertCircle, Loader, X, Rocket, Check, Sun, Moon } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Loader, X, Rocket, Check, Sun, Moon, CloudOff, Cloud } from 'lucide-react'
 import Sidebar from './Sidebar'
 import PhoneSimulator from '../components/simulator/PhoneSimulator'
 import AnimatedBackground from '../components/background/AnimatedBackground'
 import { useCssVariables } from '../hooks/useCssVariables'
 import { useSaveToServer } from '../hooks/useSaveToServer'
+import { useAutoSave } from '../hooks/useAutoSave'
 import { useTenantStore } from '../store/useTenantStore'
 import FlagImage from '../components/ui/FlagImage'
 
@@ -281,6 +282,61 @@ function PublishConfirmModal({ onConfirm, onCancel, busy }) {
   )
 }
 
+// ─── Indicador de autosave ─────────────────────────────────────────────────────
+
+function AutoSaveIndicator() {
+  const { status, lastSaved, error } = useAutoSave()
+
+  function timeAgo(date) {
+    if (!date) return ''
+    const diff = Math.floor((Date.now() - date.getTime()) / 1000)
+    if (diff < 5)   return 'ahora'
+    if (diff < 60)  return `${diff}s`
+    const m = Math.floor(diff / 60)
+    if (m < 60)     return `${m}m`
+    const h = Math.floor(m / 60)
+    return `${h}h`
+  }
+
+  const config = {
+    idle:    { Icon: Cloud,       color: 'rgba(255,255,255,0.3)',  label: lastSaved ? `guardado · ${timeAgo(lastSaved)}` : 'sin cambios' },
+    saving:  { Icon: Loader,      color: 'rgba(255,255,255,0.5)',  label: 'guardando…',  spinning: true },
+    saved:   { Icon: CheckCircle, color: 'rgba(52,199,89,0.85)',   label: lastSaved ? `guardado · ${timeAgo(lastSaved)}` : 'guardado' },
+    error:   { Icon: AlertCircle, color: 'rgba(248,113,113,0.85)', label: error ?? 'error' },
+    offline: { Icon: CloudOff,    color: 'rgba(255,180,0,0.85)',   label: 'sin servidor' },
+  }
+  const cfg = config[status] ?? config.idle
+  const Icon = cfg.Icon
+
+  return (
+    <div
+      title={error ?? cfg.label}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        padding: '4px 9px', borderRadius: 6,
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        fontSize: 9, color: cfg.color, fontFamily: 'Space Mono, monospace',
+        letterSpacing: '0.04em',
+        transition: 'color 0.2s ease, border-color 0.2s ease',
+      }}
+    >
+      {cfg.spinning ? (
+        <motion.span
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+          style={{ display: 'flex' }}
+        >
+          <Icon size={9} color={cfg.color} />
+        </motion.span>
+      ) : (
+        <Icon size={9} color={cfg.color} />
+      )}
+      <span style={{ whiteSpace: 'nowrap' }}>{cfg.label}</span>
+    </div>
+  )
+}
+
 // ─── Botón Publicar ────────────────────────────────────────────────────────────
 
 function PublishButton() {
@@ -460,7 +516,10 @@ export default function DashboardLayout() {
               Vista previa
             </span>
           </div>
-          <PublishButton />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AutoSaveIndicator />
+            <PublishButton />
+          </div>
         </div>
 
         <div style={{ paddingTop: 52 }}>
