@@ -235,8 +235,9 @@ function TenantSwitcher({ primaryColor, onOpenCreateModal }) {
 }
 
 function NavGroup({ label, items, primaryColor }) {
+  const tenantCode    = useTenantStore((s) => s.advanced.tenantCode)
   const setupComplete = useTenantStore((s) => s.advanced._setupComplete === true)
-  const visible = items.filter(i => !i.requiresSetup || setupComplete)
+  const visible = items.filter(i => !i.requiresSetup || setupComplete || !!tenantCode)
   return (
     <div>
       <div style={{
