@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Palette, Settings, Languages,
   FileJson, Package, ChevronRight, Zap, Globe, Globe2, LayoutGrid,
-  ChevronDown, Plus, Check, Loader, X, Layers, FileText,
+  ChevronDown, Plus, Check, Loader, X, Layers, FileText, GitBranch,
 } from 'lucide-react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
 import { useTenantManager } from '../hooks/useTenantManager'
@@ -17,7 +17,8 @@ const NAV_ITEMS = [
   { to: '/language',  label: 'Idiomas',      desc: 'Idioma predeterminado', Icon: Languages },
   { to: '/advanced',  label: 'Avanzado',     desc: 'API y credenciales',    Icon: Settings },
   { to: '/countries', label: 'Países',       desc: 'Herencias y estado',    Icon: Globe2,     requiresSetup: true },
-  { to: '/documents', label: 'Documentos',   desc: 'OCR por país',          Icon: FileText,   requiresSetup: true },
+  { to: '/documents',   label: 'Documentos',  desc: 'OCR por país',          Icon: FileText,   requiresSetup: true },
+  { to: '/inheritance', label: 'Herencias',   desc: 'Módulos por país',      Icon: GitBranch,  requiresSetup: true },
   { to: '/export',    label: 'Exportar',     desc: 'JSON del tenant',       Icon: FileJson },
 ]
 
