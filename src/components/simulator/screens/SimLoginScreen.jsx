@@ -1,10 +1,17 @@
+import { useState } from 'react'
 import { useSimulatorConfig } from '../../../context/SimulatorContext'
 
 export default function SimLoginScreen() {
   const { branding, i18n, login } = useSimulatorConfig()
-  const initial = (branding.name || 'M')[0].toUpperCase()
-  const showPhone = login?.phoneEnabled ?? true
-  const showEmail = login?.emailEnabled ?? true
+  const initial    = (branding.name || 'M')[0].toUpperCase()
+  const showPhone  = login?.phoneEnabled ?? true
+  const showEmail  = login?.emailEnabled ?? true
+  const both       = showPhone && showEmail
+  const [tab, setTab] = useState('phone')  // solo importa cuando both === true
+
+  const placeholder = both
+    ? (tab === 'phone' ? 'Número de teléfono' : 'correo@ejemplo.com')
+    : showPhone ? 'Número de teléfono' : 'correo@ejemplo.com'
 
   return (
     <div className="sim-app" style={{ justifyContent: 'flex-start' }}>
@@ -28,48 +35,66 @@ export default function SimLoginScreen() {
         }}>
           {branding.name}
         </div>
-        <div style={{
-          fontSize: 9, color: 'var(--sim-text-secondary)',
-          marginTop: 2, transition: 'color 0.3s ease',
-        }}>
+        <div style={{ fontSize: 9, color: 'var(--sim-text-secondary)', marginTop: 2, transition: 'color 0.3s ease' }}>
           {i18n.loginSubtitle}
         </div>
       </div>
 
       {/* Form */}
       <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
-        {showPhone && (
-          <input className="sim-input" placeholder="Número de teléfono" readOnly />
+
+        {/* Tab switcher — solo cuando ambos están activos */}
+        {both && (
+          <div style={{
+            display: 'flex', borderRadius: 7, overflow: 'hidden',
+            border: '1px solid var(--sim-border)',
+            marginBottom: 2,
+          }}>
+            {[['phone', 'Teléfono'], ['email', 'Correo']].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                style={{
+                  flex: 1, padding: '5px 0', border: 'none', cursor: 'pointer',
+                  fontSize: 8, fontWeight: 600,
+                  background: tab === key ? 'var(--sim-primary)' : 'transparent',
+                  color: tab === key ? '#fff' : 'var(--sim-text-secondary)',
+                  transition: 'background 0.15s ease, color 0.15s ease',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         )}
-        {showEmail && (
-          <input className="sim-input" placeholder="correo@ejemplo.com" readOnly />
+
+        {/* Un solo input */}
+        {(showPhone || showEmail) && (
+          <input className="sim-input" placeholder={placeholder} readOnly />
         )}
+
         <div className="sim-btn-primary">{i18n.loginButton}</div>
       </div>
 
-      {showEmail && showPhone && (
-        <div className="sim-divider" style={{ marginTop: 10 }}>o</div>
-      )}
-
-      {showEmail && showPhone && (
-        <div style={{ padding: '0 14px' }}>
-          <div style={{
-            border: '1px solid var(--sim-border)', borderRadius: 8,
-            padding: '7px 12px', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', gap: 6, transition: 'border-color 0.3s ease',
-          }}>
-            <GoogleIcon />
-            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--sim-text-primary)', transition: 'color 0.3s ease' }}>
-              Continuar con Google
-            </span>
+      {both && (
+        <>
+          <div className="sim-divider" style={{ marginTop: 10 }}>o</div>
+          <div style={{ padding: '0 14px' }}>
+            <div style={{
+              border: '1px solid var(--sim-border)', borderRadius: 8,
+              padding: '7px 12px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: 6, transition: 'border-color 0.3s ease',
+            }}>
+              <GoogleIcon />
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--sim-text-primary)', transition: 'color 0.3s ease' }}>
+                Continuar con Google
+              </span>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      <div style={{
-        textAlign: 'center', marginTop: 14, fontSize: 8,
-        color: 'var(--sim-text-secondary)', transition: 'color 0.3s ease',
-      }}>
+      <div style={{ textAlign: 'center', marginTop: 14, fontSize: 8, color: 'var(--sim-text-secondary)', transition: 'color 0.3s ease' }}>
         ¿Olvidaste tu cuenta?{' '}
         <span style={{ color: 'var(--sim-primary)', fontWeight: 600, transition: 'color 0.3s ease' }}>
           Recuperar
