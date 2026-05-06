@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Users, UserPlus, Shield, Globe2, Trash2, RefreshCw, Eye, EyeOff, X, Info, Search, ChevronDown, Ban } from 'lucide-react'
+import { Users, UserPlus, Shield, Globe2, Trash2, RefreshCw, Eye, EyeOff, X, Info, Search, ChevronDown, Ban, Check } from 'lucide-react'
 import PageHeader from '../components/ui/PageHeader'
 import { useTenantStore } from '../store/useTenantStore'
 import { useAuthStore } from '../store/useAuthStore'
@@ -38,32 +38,71 @@ function RolBadge({ level, name }) {
   )
 }
 
-function SelectField({ value, onChange, children, required }) {
+function CustomSelect({ value, onChange, options, placeholder }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  const selected = options.find(o => String(o.value) === String(value))
+
   return (
-    <div style={{ position: 'relative' }}>
-      <select
-        required={required}
-        value={value}
-        onChange={onChange}
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
         style={{
           ...inputStyle,
-          cursor: 'pointer',
-          paddingRight: 32,
-          WebkitAppearance: 'none',
-          MozAppearance: 'none',
-          appearance: 'none',
-          colorScheme: 'dark',
+          cursor: 'pointer', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', textAlign: 'left',
+          borderColor: open ? 'rgba(232,23,93,0.5)' : 'rgba(255,255,255,0.1)',
         }}
-        onFocus={e => e.target.style.borderColor = 'rgba(232,23,93,0.5)'}
-        onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
       >
-        {children}
-      </select>
-      <ChevronDown
-        size={12}
-        color="rgba(255,255,255,0.3)"
-        style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-      />
+        <span style={{ color: selected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)', fontSize: 12, fontFamily: 'Sora' }}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <ChevronDown size={12} color="rgba(255,255,255,0.3)"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s', flexShrink: 0 }} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 300,
+          background: '#0D1017', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 10, overflow: 'hidden auto', maxHeight: 200,
+          boxShadow: '0 10px 36px rgba(0,0,0,0.7)',
+        }}>
+          {options.map((o, i) => {
+            const isSel = String(o.value) === String(value)
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(String(o.value)); setOpen(false) }}
+                style={{
+                  width: '100%', padding: '9px 12px', textAlign: 'left', cursor: 'pointer',
+                  background: isSel ? 'rgba(232,23,93,0.1)' : 'transparent', border: 'none',
+                  borderBottom: i < options.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                  color: isSel ? '#E8175D' : 'rgba(255,255,255,0.75)',
+                  fontSize: 12, fontFamily: 'Sora',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+              >
+                {o.label}
+                {isSel && <Check size={11} color="#E8175D" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -89,6 +128,9 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (!form.rolId) { setError('Seleccioná un rol'); return }
+    if (isSystem && isTenantLevel && !form.tenantCode) { setError('Seleccioná un tenant'); return }
+    if (needsCountry && !form.countryCode) { setError('Seleccioná un país'); return }
     setError(null)
     setLoading(true)
     try {
@@ -200,12 +242,12 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
           </Field>
 
           <Field label="Rol *">
-            <SelectField required value={form.rolId} onChange={e => { set('rolId', e.target.value); set('tenantCode', ''); set('countryCode', '') }}>
-              <option value="">Seleccionar rol…</option>
-              {roles.map(r => (
-                <option key={r.id} value={r.id}>L{r.level} — {r.name}</option>
-              ))}
-            </SelectField>
+            <CustomSelect
+              value={form.rolId}
+              onChange={v => { set('rolId', v); set('tenantCode', ''); set('countryCode', '') }}
+              placeholder="Seleccionar rol…"
+              options={roles.map(r => ({ value: String(r.id), label: `L${r.level} — ${r.name}` }))}
+            />
           </Field>
 
           {selectedRol && (
@@ -222,25 +264,23 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
 
           {isSystem && isTenantLevel && (
             <Field label="Tenant *">
-              <SelectField required value={form.tenantCode} onChange={e => { set('tenantCode', e.target.value); set('countryCode', '') }}>
-                <option value="">Seleccionar tenant…</option>
-                {allTenants.map(t => (
-                  <option key={t.code} value={t.code}>{t.name}</option>
-                ))}
-              </SelectField>
+              <CustomSelect
+                value={form.tenantCode}
+                onChange={v => { set('tenantCode', v); set('countryCode', '') }}
+                placeholder="Seleccionar tenant…"
+                options={allTenants.map(t => ({ value: t.code, label: t.name }))}
+              />
             </Field>
           )}
 
           {needsCountry && tenantCountries.length > 0 && (!isSystem || form.tenantCode) && (
             <Field label="País asignado *">
-              <SelectField required value={form.countryCode} onChange={e => set('countryCode', e.target.value)}>
-                <option value="">Seleccionar país…</option>
-                {tenantCountries.map(c => (
-                  <option key={c.iso_2 ?? c.countryCode} value={c.iso_2 ?? c.countryCode}>
-                    {c.name ?? c.iso_2 ?? c.countryCode}
-                  </option>
-                ))}
-              </SelectField>
+              <CustomSelect
+                value={form.countryCode}
+                onChange={v => set('countryCode', v)}
+                placeholder="Seleccionar país…"
+                options={tenantCountries.map(c => ({ value: c.iso_2 ?? c.countryCode, label: c.name ?? c.iso_2 ?? c.countryCode }))}
+              />
             </Field>
           )}
 
