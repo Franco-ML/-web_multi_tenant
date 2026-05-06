@@ -148,9 +148,11 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const selectedRol        = roles.find(r => r.id === Number(form.rolId))
-  const isTenantLevel      = selectedRol && selectedRol.level >= 10
-  const needsCountry       = selectedRol && selectedRol.level === 11
+  const selectedRol         = roles.find(r => r.id === Number(form.rolId))
+  const isSuperTenantRole   = selectedRol && selectedRol.level === 10
+  const isCountryAdminRole  = selectedRol && selectedRol.level === 11
+  const needsTenant         = isCountryAdminRole  // L10 crea su propio tenant; solo L11 necesita uno asignado
+  const needsCountry        = isCountryAdminRole
   const effectiveTenantCode = isSystem ? form.tenantCode : tenantCode
 
   const tenantCountries = isSystem
@@ -160,7 +162,7 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.rolId) { setError('Seleccioná un rol'); return }
-    if (isSystem && isTenantLevel && !form.tenantCode) { setError('Seleccioná un tenant'); return }
+    if (needsTenant && isSystem && !form.tenantCode) { setError('Seleccioná un tenant'); return }
     if (needsCountry && !form.countryCode) { setError('Seleccioná un país'); return }
     setError(null)
     setLoading(true)
@@ -170,8 +172,8 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
         email:       form.email.trim(),
         password:    form.password,
         rolId:       Number(form.rolId),
-        tenantCode:  isTenantLevel ? effectiveTenantCode : undefined,
-        countryCode: needsCountry  ? form.countryCode : undefined,
+        tenantCode:  needsTenant ? effectiveTenantCode : undefined,
+        countryCode: needsCountry ? form.countryCode : undefined,
       }
       const res = await apiFetch(`${SERVER_URL}/users`, {
         method: 'POST',
@@ -293,7 +295,17 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
             </div>
           )}
 
-          {isSystem && isTenantLevel && (
+          {isSuperTenantRole && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 8,
+              background: 'rgba(10,132,255,0.06)', border: '1px solid rgba(10,132,255,0.18)',
+              fontSize: 10, fontFamily: 'Space Mono', color: 'rgba(10,132,255,0.7)', lineHeight: 1.5,
+            }}>
+              El usuario creará su propio tenant al iniciar sesión por primera vez.
+            </div>
+          )}
+
+          {isSystem && needsTenant && (
             <Field label="Tenant *">
               <CustomSelect
                 value={form.tenantCode}
