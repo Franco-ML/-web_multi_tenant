@@ -1,7 +1,10 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { useUserRole } from '../hooks/useUserRole'
+import { useAuthStore } from '../store/useAuthStore'
+import { useTenantStore } from '../store/useTenantStore'
 import DashboardLayout from '../layouts/DashboardLayout'
 import LoginPage from '../pages/LoginPage'
+import OnboardingPage from '../pages/OnboardingPage'
 import BrandPage from '../pages/BrandPage'
 import BrandingPage from '../pages/BrandingPage'
 import ThemePage from '../pages/ThemePage'
@@ -22,8 +25,19 @@ import InheritancePage from '../pages/InheritancePage'
 import UsersPage from '../pages/UsersPage'
 
 function RootRedirect() {
-  const { isSystem } = useUserRole()
-  return <Navigate to={isSystem ? '/system/tenants' : '/brand'} replace />
+  const { isSystem, isSuperTenant } = useUserRole()
+  const setupComplete = useTenantStore(s => s.advanced._setupComplete)
+  const tenantCode    = useTenantStore(s => s.advanced.tenantCode)
+
+  if (isSystem) return <Navigate to="/system/tenants" replace />
+
+  if (isSuperTenant && !setupComplete) {
+    // Sin tenantCode en el store → primer acceso, ir al onboarding
+    // Con tenantCode → retomó a mitad de wizard
+    return <Navigate to={tenantCode ? '/setup' : '/onboarding'} replace />
+  }
+
+  return <Navigate to="/brand" replace />
 }
 
 // import.meta.env.BASE_URL refleja el `base` del vite.config.js
@@ -32,7 +46,8 @@ function RootRedirect() {
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 export const router = createBrowserRouter([
-  { path: 'login', element: <LoginPage /> },
+  { path: 'login',      element: <LoginPage /> },
+  { path: 'onboarding', element: <OnboardingPage /> },
   {
     path: '/',
     element: <DashboardLayout />,

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
+import { useAuthStore } from '../store/useAuthStore'
 import { apiFetch } from '../lib/api'
 
 const SERVER_URL = import.meta.env.VITE_TENANT_API_URL ?? 'http://localhost:3001'
@@ -55,12 +56,17 @@ export function useTenantManager() {
   const [switching, setSwitching] = useState(false)
 
   const fetchTenants = useCallback(async () => {
-    // Siempre incluir drafts locales y el tenant activo actual
+    const user         = useAuthStore.getState().user
+    const userLevel    = user?.rol?.level ?? 10
+    // Códigos de tenants a los que el usuario pertenece (para L10+)
+    const allowedCodes = userLevel >= 10
+      ? new Set((user?.tenants ?? []).map(t => t.tenant_code).filter(Boolean))
+      : null  // null = sin restricción (L1/L2 ven todo)
+
     const localDrafts  = getLocalDraftTenants()
     const currentState = useTenantStore.getState()
     const currentCode  = currentState.advanced?.tenantCode
 
-    // El tenant activo también debe estar en la lista, aunque no tenga draft aún
     const activeTenant = currentCode ? {
       id:           currentCode,
       code:         currentCode,
@@ -72,14 +78,17 @@ export function useTenantManager() {
 
     function merge(serverList) {
       const map = new Map()
-      // Primero los del server (ya publicados)
-      for (const t of serverList) map.set(t.code, { ...t, isDraft: false })
-      // Drafts locales: si el server no lo tiene, lo agrega; si lo tiene, lo deja (ya publicado)
-      for (const t of localDrafts) {
-        if (!map.has(t.code)) map.set(t.code, t)
+      for (const t of serverList) {
+        if (!allowedCodes || allowedCodes.has(t.code)) {
+          map.set(t.code, { ...t, isDraft: false })
+        }
       }
-      // Tenant activo: si no está en ningún lado, lo agrega
-      if (activeTenant && !map.has(activeTenant.code)) {
+      for (const t of localDrafts) {
+        if (!map.has(t.code) && (!allowedCodes || allowedCodes.has(t.code))) {
+          map.set(t.code, t)
+        }
+      }
+      if (activeTenant && !map.has(activeTenant.code) && (!allowedCodes || allowedCodes.has(activeTenant.code))) {
         map.set(activeTenant.code, activeTenant)
       }
       return Array.from(map.values())
@@ -90,7 +99,6 @@ export function useTenantManager() {
       const data = await res.json()
       setTenants(merge(data.tenants ?? []))
     } catch {
-      // Server caído: usar solo locales
       setTenants(merge([]))
     }
   }, [])
