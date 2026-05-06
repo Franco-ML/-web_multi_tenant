@@ -370,7 +370,7 @@ export default function InheritancePage() {
         background: PANEL_BG, border: `1px solid ${BORDER}`, borderRadius: 14,
         overflow: 'auto', marginBottom: 14,
       }}>
-        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 900 }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 820 }}>
           <thead>
             <tr>
               <th style={headerCellStyle(true)}>Contexto</th>
@@ -473,27 +473,28 @@ const headerCellStyle = (sticky) => ({
   left: sticky ? 0 : 'auto',
   zIndex: sticky ? 2 : 1,
   background: '#0a0d13',
-  padding: '12px 14px',
+  padding: '10px 10px',
   fontSize: 9, fontWeight: 700, fontFamily: FONT_MONO,
   color: 'rgba(255,255,255,0.4)',
-  textTransform: 'uppercase', letterSpacing: '0.07em',
+  textTransform: 'uppercase', letterSpacing: '0.05em',
   borderBottom: `1px solid ${BORDER}`,
   textAlign: sticky ? 'left' : 'center',
-  minWidth: sticky ? 200 : 110,
+  width: sticky ? 180 : undefined,
+  minWidth: sticky ? 180 : 96,
 })
 
 const rowHeaderStyle = (isLast) => ({
   position: 'sticky',
   left: 0,
   background: '#0a0d13',
-  padding: '12px 14px',
+  padding: '10px 12px',
   borderBottom: isLast ? 'none' : `1px solid ${BORDER}`,
   borderRight: `1px solid ${BORDER}`,
-  minWidth: 200, verticalAlign: 'top',
+  width: 180, minWidth: 180, verticalAlign: 'top',
 })
 
 const cellStyle = (isLast) => ({
-  padding: '8px 10px',
+  padding: '6px 7px',
   borderBottom: isLast ? 'none' : `1px solid ${BORDER}`,
   verticalAlign: 'top',
 })

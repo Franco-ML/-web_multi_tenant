@@ -450,7 +450,11 @@ export default function DashboardLayout() {
   const { isSystem, isCountryAdmin, isSuperTenant, assignedCountries } = useUserRole()
   const { switchTenant } = useTenantManager()
 
-  const showSim = !isSystem || systemSimOpen
+  // Rutas donde el simulador no aporta nada (gestión, no preview visual)
+  const NO_SIM_PATHS = ['/inheritance', '/users', '/payments', '/apk', '/export', '/system']
+  const isNoSimPath = NO_SIM_PATHS.some(p => location.pathname.startsWith(p))
+
+  const showSim = (!isSystem || systemSimOpen) && !isNoSimPath
 
   const [simOpen, setSimOpen] = useState(
     () => localStorage.getItem('sim-panel-open') !== 'false'
