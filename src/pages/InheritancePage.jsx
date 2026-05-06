@@ -27,6 +27,23 @@ const MODULES = [
   { key: 'advanced',       label: 'Avanzado',         Icon: Settings,   color: '#A0AEC0', desc: 'URLs, claves y entorno' },
 ]
 
+// ¿Hacer que `targetId` herede de `sourceId` crearía un ciclo?
+// Se camina la cadena de herencia desde sourceId hacia arriba; si toca targetId, hay ciclo.
+function wouldCreateCycle(allCountries, targetId, sourceId) {
+  if (sourceId === 'base' || !sourceId) return false
+  if (sourceId === targetId) return true
+  let current = sourceId
+  const visited = new Set()
+  while (current && current !== 'base') {
+    if (current === targetId) return true
+    if (visited.has(current)) return false  // hay ciclo previo en los datos, lo ignoramos
+    visited.add(current)
+    const c = allCountries.find(x => x.id === current)
+    current = c?.inheritsFrom
+  }
+  return false
+}
+
 function cellState(country, moduleKey) {
   if (moduleKey === 'documents') {
     return country.documents && country.documents.length > 0 ? 'own' : 'inherit'
@@ -139,6 +156,11 @@ function SourceSelector({ country, allCountries, onChange }) {
   const source = country.inheritsFrom ?? 'base'
   const sourceCountry = source !== 'base' ? allCountries.find(c => c.id === source) : null
 
+  // Países que generarían un ciclo si este país heredara de ellos
+  const candidates = allCountries
+    .filter(c => c.id !== country.id)
+    .map(c => ({ ...c, wouldCycle: wouldCreateCycle(allCountries, country.id, c.id) }))
+
   return (
     <div style={{ position: 'relative' }}>
       <button onClick={() => setOpen(v => !v)}
@@ -164,7 +186,7 @@ function SourceSelector({ country, allCountries, onChange }) {
           <div style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 11,
             background: '#0D1017', border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 10, overflow: 'hidden', minWidth: 220,
+            borderRadius: 10, overflow: 'hidden', minWidth: 240,
             boxShadow: '0 12px 36px rgba(0,0,0,0.7)',
           }}>
             <button onClick={() => { onChange(country.id, 'base'); setOpen(false) }} style={menuItemStyle(source === 'base')}
@@ -174,15 +196,38 @@ function SourceSelector({ country, allCountries, onChange }) {
               <span>Configuración base</span>
               {source === 'base' && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
             </button>
-            {allCountries.filter(c => c.id !== country.id).map(c => (
-              <button key={c.id} onClick={() => { onChange(country.id, c.id); setOpen(false) }} style={menuItemStyle(source === c.id)}
-                onMouseEnter={e => { if (source !== c.id) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                onMouseLeave={e => { if (source !== c.id) e.currentTarget.style.background = 'transparent' }}>
-                <FlagImage code={c.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
-                <span>{c.name}</span>
-                {source === c.id && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
-              </button>
-            ))}
+            {candidates.map(c => {
+              const disabled = c.wouldCycle
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => { if (!disabled) { onChange(country.id, c.id); setOpen(false) } }}
+                  disabled={disabled}
+                  title={disabled ? `${c.name} hereda (directa o indirectamente) de ${country.name}, eso crearía un ciclo` : undefined}
+                  style={{
+                    ...menuItemStyle(source === c.id),
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.45 : 1,
+                  }}
+                  onMouseEnter={e => { if (!disabled && source !== c.id) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                  onMouseLeave={e => { if (!disabled && source !== c.id) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <FlagImage code={c.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
+                  <span>{c.name}</span>
+                  {disabled && (
+                    <span style={{
+                      marginLeft: 'auto', fontSize: 7, padding: '2px 5px', borderRadius: 3,
+                      background: 'rgba(255,180,0,0.1)', border: '1px solid rgba(255,180,0,0.2)',
+                      color: 'rgba(255,180,0,0.8)', fontFamily: FONT_MONO, fontWeight: 700,
+                      letterSpacing: '0.04em',
+                    }}>
+                      ciclo
+                    </span>
+                  )}
+                  {!disabled && source === c.id && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
+                </button>
+              )
+            })}
           </div>
         </>
       )}
@@ -290,6 +335,10 @@ export default function InheritancePage() {
   }
 
   function handleSourceChange(countryId, newSource) {
+    if (newSource !== 'base' && wouldCreateCycle(countryConfigs, countryId, newSource)) {
+      console.warn('[Herencias] cambio bloqueado: crearía un ciclo', { countryId, newSource })
+      return
+    }
     setCountryInheritance(countryId, newSource)
   }
 
