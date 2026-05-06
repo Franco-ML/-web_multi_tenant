@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Globe2, FileText, Search, Plus, Trash2, ScanLine,
   ToggleLeft, ToggleRight, Loader, AlertCircle, ChevronLeft, X,
+  CheckCircle2, CreditCard, FlipHorizontal, Car, BookOpen,
+  Home, Heart, Truck, Baby, ChevronRight, ArrowLeft,
 } from 'lucide-react'
 import { useUserRole } from '../hooks/useUserRole'
 import { apiFetch } from '../lib/api'
@@ -18,6 +21,16 @@ const GREEN      = '#10B981'
 const BLUE       = '#63B3ED'
 const BORDER     = 'rgba(255,255,255,0.07)'
 const PANEL_BG   = 'rgba(255,255,255,0.03)'
+
+const DOC_TYPE_META = {
+  national_id:       { Icon: CreditCard, color: '#E8175D',  bg: 'rgba(232,23,93,0.12)' },
+  drivers_license:   { Icon: Car,        color: '#F6AD55',  bg: 'rgba(246,173,85,0.12)' },
+  passport:          { Icon: BookOpen,   color: '#63B3ED',  bg: 'rgba(99,179,237,0.12)' },
+  residence_card:    { Icon: Home,       color: '#68D391',  bg: 'rgba(104,211,145,0.12)' },
+  health_card:       { Icon: Heart,      color: '#FC8181',  bg: 'rgba(252,129,129,0.12)' },
+  vehicle_permit:    { Icon: Truck,      color: '#B794F4',  bg: 'rgba(183,148,244,0.12)' },
+  birth_certificate: { Icon: Baby,       color: '#F6E05E',  bg: 'rgba(246,224,94,0.12)' },
+}
 
 function Spinner({ size = 14, color = 'rgba(255,255,255,0.3)' }) {
   return (
@@ -54,6 +67,193 @@ function DocToggle({ active, onToggle, loading }) {
         cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.5 : 1, flexShrink: 0 }}>
       {active ? <ToggleRight size={20} color={GREEN} /> : <ToggleLeft size={20} color="rgba(255,255,255,0.2)" />}
     </button>
+  )
+}
+
+// ─── Modal de confirmación de activación ──────────────────────────────────────
+
+function DocCard({ doc }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 10,
+        padding: '14px 14px 12px',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.09)',
+        borderRadius: 12, position: 'relative', overflow: 'hidden',
+      }}
+    >
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+        background: doc.ocr_supported
+          ? 'linear-gradient(90deg, #63B3ED, #4299e1)'
+          : 'linear-gradient(90deg, rgba(232,23,93,0.6), rgba(232,23,93,0.3))',
+        borderRadius: '12px 12px 0 0',
+      }} />
+      <div style={{
+        width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(255,255,255,0.06)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <CreditCard size={15} color="rgba(255,255,255,0.45)" />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: FONT_SORA, lineHeight: 1.3, marginBottom: 5 }}>
+          {doc.name}
+        </div>
+        <div style={{
+          display: 'inline-block', fontSize: 8, padding: '2px 6px', borderRadius: 4,
+          background: 'rgba(232,23,93,0.1)', border: '1px solid rgba(232,23,93,0.2)',
+          color: ACCENT, fontFamily: FONT_MONO, letterSpacing: '0.05em', fontWeight: 700,
+        }}>
+          {doc.code}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+        {doc.ocr_supported && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 8, fontFamily: FONT_MONO, color: '#63B3ED', padding: '2px 6px', borderRadius: 4, background: 'rgba(99,179,237,0.08)', border: '1px solid rgba(99,179,237,0.2)' }}>
+            <ScanLine size={8} /> OCR
+          </span>
+        )}
+        {doc.has_back && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.35)', padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <FlipHorizontal size={8} /> reverso
+          </span>
+        )}
+        {(doc.fields?.length ?? 0) > 0 && (
+          <span style={{ fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.25)', padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {doc.fields.length} campos
+          </span>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+function ActivationModal({ country, documents, loadingDocs, confirming, onConfirm, onCancel }) {
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        key="activation-backdrop"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 3000,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}
+        onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 8 }}
+          transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+          style={{
+            width: '100%', maxWidth: 560,
+            background: '#0e1117',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 18, overflow: 'hidden',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
+          }}
+        >
+          <div style={{ padding: '22px 24px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <FlagImage code={country.iso_2} size={44} style={{ height: 32, borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)' }} />
+                <div>
+                  <div style={{ fontSize: 17, fontWeight: 800, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.92)' }}>
+                    Activar {country.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: FONT_MONO, marginTop: 2 }}>
+                    Se habilitará para todos los tenants del sistema
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={onCancel}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: 'rgba(255,255,255,0.3)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div style={{ padding: '18px 24px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', marginBottom: 12, textTransform: 'uppercase' }}>
+              Documentos base incluidos ({documents.length})
+            </div>
+
+            {loadingDocs ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
+                <Spinner size={18} />
+              </div>
+            ) : documents.length === 0 ? (
+              <div style={{
+                padding: '22px 16px', textAlign: 'center',
+                background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 12,
+              }}>
+                <FileText size={22} color="rgba(255,255,255,0.1)" style={{ marginBottom: 8 }} />
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: FONT_SORA }}>Sin documentos configurados</div>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.18)', fontFamily: FONT_MONO, marginTop: 3 }}>
+                  El país se activará sin templates de documentos
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                gap: 8,
+                maxHeight: 280, overflowY: 'auto',
+                paddingRight: 4,
+              }}>
+                {documents.map((doc, i) => (
+                  <motion.div key={doc.code} transition={{ delay: i * 0.04 }}>
+                    <DocCard doc={doc} />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{
+            padding: '14px 24px 20px',
+            display: 'flex', gap: 8, justifyContent: 'flex-end',
+          }}>
+            <button
+              onClick={onCancel}
+              disabled={confirming}
+              style={{
+                padding: '9px 18px', borderRadius: 9, cursor: 'pointer',
+                background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.5)', fontSize: 12, fontFamily: FONT_SORA, fontWeight: 600,
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={confirming}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '9px 20px', borderRadius: 9, cursor: confirming ? 'wait' : 'pointer',
+                background: GREEN, border: 'none',
+                color: '#fff', fontSize: 12, fontFamily: FONT_SORA, fontWeight: 700,
+                boxShadow: '0 4px 18px rgba(16,185,129,0.35)',
+                opacity: confirming ? 0.7 : 1, transition: 'opacity 0.15s',
+              }}
+            >
+              {confirming ? <Spinner size={13} color="#fff" /> : <CheckCircle2 size={14} />}
+              Confirmar activación
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
   )
 }
 
@@ -155,19 +355,245 @@ function CountryGrid({ countries, loading, error, search, onSearch, onSelect }) 
   )
 }
 
+// ─── Modal agregar documento (2 pasos) ────────────────────────────────────────
+
+function AddDocumentModal({ docTypes, availFields, countryIso, onSave, onCancel }) {
+  const [step,        setStep]       = useState(1)
+  const [selType,     setSelType]    = useState(null)
+  const [formCode,    setFormCode]   = useState('')
+  const [formName,    setFormName]   = useState('')
+  const [formHasBack, setFormHasBack]= useState(true)
+  const [formOcr,     setFormOcr]    = useState(true)
+  const [formFields,  setFormFields] = useState([])
+  const [saving,      setSaving]     = useState(false)
+  const [error,       setError]      = useState('')
+
+  function pickType(t) {
+    const meta = DOC_TYPE_META[t.key] ?? {}
+    const suffix = countryIso ? `_${countryIso}` : ''
+    setSelType(t)
+    setFormCode(`${t.key.toUpperCase()}${suffix}`)
+    setFormName(t.name)
+    setFormFields([])
+    setError('')
+    setStep(2)
+  }
+
+  function toggleField(key) {
+    setFormFields(p => p.includes(key) ? p.filter(x => x !== key) : [...p, key])
+  }
+
+  async function handleSave() {
+    const code = formCode.trim().toUpperCase()
+    const name = formName.trim()
+    if (!code) { setError('El código es obligatorio'); return }
+    if (!name) { setError('El nombre es obligatorio'); return }
+    setError(''); setSaving(true)
+    try {
+      const r = await apiFetch(`${SERVER_URL}/system/documents`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code, name, countryIso, hasBack: formHasBack,
+          ocrSupported: formOcr, fields: formFields,
+          documentTypeKey: selType?.key ?? null,
+        }),
+      })
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message ?? `Error ${r.status}`) }
+      onSave({ id: Date.now(), code, name, has_back: formHasBack, ocr_supported: formOcr, active: true, fields: [], doc_type_key: selType?.key })
+    } catch (e) {
+      setError(e.message ?? 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const selMeta = selType ? (DOC_TYPE_META[selType.key] ?? {}) : {}
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 3000,
+        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+        style={{
+          width: '100%', maxWidth: step === 1 ? 580 : 520,
+          background: '#0e1117', border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 18, overflow: 'hidden',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
+        }}
+      >
+        {/* Header */}
+        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {step === 2 && (
+              <button onClick={() => setStep(1)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center' }}>
+                <ArrowLeft size={15} />
+              </button>
+            )}
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.9)' }}>
+                {step === 1 ? 'Tipo de documento' : 'Configurar documento'}
+              </div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: FONT_MONO, marginTop: 1 }}>
+                Paso {step} de 2 · {step === 1 ? 'Elige el tipo' : selType?.name}
+              </div>
+            </div>
+          </div>
+          <button onClick={onCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', padding: 4, borderRadius: 6 }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Paso 1 — selector de tipo */}
+        {step === 1 && (
+          <div style={{ padding: '18px 22px 22px' }}>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: FONT_MONO, marginBottom: 14, letterSpacing: '0.06em' }}>
+              CATÁLOGO DE TIPOS
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 8 }}>
+              {docTypes.map(t => {
+                const meta = DOC_TYPE_META[t.key] ?? { Icon: FileText, color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.05)' }
+                const { Icon } = meta
+                return (
+                  <motion.button
+                    key={t.key}
+                    whileHover={{ y: -2 }}
+                    onClick={() => pickType(t)}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10,
+                      padding: '14px 14px 12px', borderRadius: 12, cursor: 'pointer',
+                      background: meta.bg, border: `1px solid ${meta.color}28`,
+                      textAlign: 'left', transition: 'border-color 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = `${meta.color}55` }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = `${meta.color}28` }}
+                  >
+                    <div style={{
+                      width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: `${meta.color}18`, border: `1px solid ${meta.color}30`,
+                    }}>
+                      <Icon size={16} color={meta.color} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.85)', lineHeight: 1.3 }}>
+                        {t.name}
+                      </div>
+                      {t.description && (
+                        <div style={{ fontSize: 9, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.3)', marginTop: 3, lineHeight: 1.4 }}>
+                          {t.description}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontFamily: FONT_MONO, color: meta.color, marginTop: 'auto' }}>
+                      Seleccionar <ChevronRight size={9} />
+                    </div>
+                  </motion.button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Paso 2 — configuración */}
+        {step === 2 && selType && (
+          <div style={{ padding: '18px 22px 22px' }}>
+            {/* Código + Nombre */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '0 0 160px' }}>
+                <label style={{ display: 'block', fontSize: 9, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.4)', marginBottom: 5, letterSpacing: '0.06em' }}>CÓDIGO *</label>
+                <input value={formCode} onChange={e => setFormCode(e.target.value.toUpperCase())} maxLength={30}
+                  style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 11px', fontSize: 12, fontFamily: FONT_MONO, letterSpacing: '0.04em', color: 'rgba(255,255,255,0.85)', outline: 'none' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <label style={{ display: 'block', fontSize: 9, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.4)', marginBottom: 5, letterSpacing: '0.06em' }}>NOMBRE *</label>
+                <input value={formName} onChange={e => setFormName(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 11px', fontSize: 12, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.85)', outline: 'none' }} />
+              </div>
+            </div>
+
+            {/* Opciones */}
+            <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+              {[
+                { key: 'hasBack', label: 'Tiene reverso',  val: formHasBack, set: setFormHasBack },
+                { key: 'ocr',     label: 'OCR habilitado', val: formOcr,     set: setFormOcr },
+              ].map(item => (
+                <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} style={{ accentColor: ACCENT, width: 13, height: 13, cursor: 'pointer' }} />
+                  <span style={{ fontSize: 11, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.65)' }}>{item.label}</span>
+                </label>
+              ))}
+            </div>
+
+            {/* Campos OCR */}
+            {availFields.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 9, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.35)', marginBottom: 10, letterSpacing: '0.06em' }}>
+                  DATOS A EXTRAER CON OCR ({formFields.length} seleccionados)
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {availFields.map(f => {
+                    const checked = formFields.includes(f.key)
+                    return (
+                      <label key={f.key} style={{
+                        display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px',
+                        borderRadius: 7, cursor: 'pointer',
+                        background: checked ? selMeta.bg ?? 'rgba(99,179,237,0.1)' : 'rgba(255,255,255,0.03)',
+                        border: checked ? `1px solid ${selMeta.color ?? BLUE}40` : `1px solid ${BORDER}`,
+                        transition: 'all 0.1s',
+                      }}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleField(f.key)} style={{ accentColor: selMeta.color ?? BLUE, width: 11, height: 11, cursor: 'pointer' }} />
+                        <span style={{ fontSize: 10, fontFamily: FONT_SORA, color: checked ? (selMeta.color ?? BLUE) : 'rgba(255,255,255,0.5)' }}>{f.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {error && <InlineError msg={error} />}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              <button onClick={onCancel} disabled={saving} style={{ padding: '9px 18px', borderRadius: 9, cursor: 'pointer', background: 'transparent', border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)', fontSize: 12, fontFamily: FONT_SORA, fontWeight: 600 }}>
+                Cancelar
+              </button>
+              <button onClick={handleSave} disabled={saving} style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '9px 20px', borderRadius: 9, cursor: saving ? 'wait' : 'pointer',
+                background: selMeta.color ?? ACCENT, border: 'none',
+                color: '#fff', fontSize: 12, fontFamily: FONT_SORA, fontWeight: 700,
+                opacity: saving ? 0.7 : 1, transition: 'opacity 0.15s',
+                boxShadow: `0 4px 16px ${selMeta.color ?? ACCENT}40`,
+              }}>
+                {saving ? <Spinner size={12} color="#fff" /> : <CheckCircle2 size={14} />}
+                Guardar documento
+              </button>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>,
+    document.body
+  )
+}
+
 // ─── Vista detalle — país seleccionado ────────────────────────────────────────
 
 function CountryDetail({
   countries, selectedIso, search, onSearch, onSelect, onBack,
   onToggleCountry, toggleLoading,
+  onRequestActivate,
   documents, loadingDocs, docsError,
   onToggleDoc, docToggleLoad,
   onDeleteDoc, docDeleteLoad,
-  showAddForm, onOpenAdd, onCancelAdd,
-  formCode, setFormCode, formName, setFormName,
-  formHasBack, setFormHasBack, formOcr, setFormOcr,
-  formFields, toggleFormField, availFields,
-  formSaving, formError, onSaveDoc,
+  onOpenAdd,
 }) {
   const filtered = countries.filter(c =>
     c.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -310,7 +736,10 @@ function CountryDetail({
                   )}
                 </div>
                 <button
-                  onClick={() => onToggleCountry(selected.iso_2)}
+                  onClick={() => selected.active
+                    ? onToggleCountry(selected.iso_2)
+                    : onRequestActivate(selected.iso_2)
+                  }
                   disabled={!!toggleLoading[selected.iso_2]}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
@@ -322,6 +751,7 @@ function CountryDetail({
                     opacity: toggleLoading[selected.iso_2] ? 0.5 : 1,
                   }}
                 >
+                  {toggleLoading[selected.iso_2] ? <Spinner size={12} color="currentColor" /> : null}
                   {selected.active ? 'Desactivar' : 'Activar'}
                 </button>
               </div>
@@ -335,20 +765,18 @@ function CountryDetail({
                   <span style={{ fontSize: 11, fontWeight: 700, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.55)' }}>
                     Documentos base
                   </span>
-                  {!showAddForm && (
-                    <button
-                      onClick={onOpenAdd}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '7px 13px', borderRadius: 8, cursor: 'pointer',
-                        background: ACCENT, border: 'none',
-                        color: '#fff', fontSize: 11, fontFamily: FONT_SORA, fontWeight: 700,
-                        boxShadow: '0 3px 14px rgba(232,23,93,0.3)',
-                      }}
-                    >
-                      <Plus size={13} /> Agregar documento
-                    </button>
-                  )}
+                  <button
+                    onClick={onOpenAdd}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '7px 13px', borderRadius: 8, cursor: 'pointer',
+                      background: ACCENT, border: 'none',
+                      color: '#fff', fontSize: 11, fontFamily: FONT_SORA, fontWeight: 700,
+                      boxShadow: '0 3px 14px rgba(232,23,93,0.3)',
+                    }}
+                  >
+                    <Plus size={13} /> Agregar documento
+                  </button>
                 </div>
 
                 <div style={{ padding: '14px 18px' }}>
@@ -359,7 +787,7 @@ function CountryDetail({
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <AnimatePresence initial={false}>
-                        {documents.length === 0 && !showAddForm ? (
+                        {documents.length === 0 ? (
                           <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             style={{
                               padding: '28px 16px', textAlign: 'center',
@@ -370,116 +798,71 @@ function CountryDetail({
                             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', fontFamily: FONT_MONO, marginTop: 3 }}>Agrega el primer template para este país</div>
                           </motion.div>
                         ) : (
-                          documents.map(doc => (
-                            <motion.div key={doc.code} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -10 }} layout
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 12,
-                                padding: '11px 14px', borderRadius: 11,
-                                background: doc.active ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)',
-                                border: doc.active ? '1px solid rgba(255,255,255,0.08)' : `1px solid rgba(255,255,255,0.04)`,
-                                opacity: doc.active ? 1 : 0.55,
-                              }}>
-                              <div style={{
-                                padding: '3px 8px', borderRadius: 5, flexShrink: 0,
-                                background: 'rgba(232,23,93,0.08)', border: '1px solid rgba(232,23,93,0.18)',
-                                fontSize: 9, fontWeight: 700, fontFamily: FONT_MONO, letterSpacing: '0.05em', color: ACCENT,
-                              }}>
-                                {doc.code}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: FONT_SORA }}>{doc.name}</div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                  {doc.ocr_supported && (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(99,179,237,0.7)', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,179,237,0.08)', border: '1px solid rgba(99,179,237,0.15)' }}>
-                                      <ScanLine size={8} /> OCR
-                                    </span>
-                                  )}
-                                  {doc.has_back && (
-                                    <span style={{ fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.3)', padding: '1px 5px', borderRadius: 3, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BORDER}` }}>tiene reverso</span>
-                                  )}
-                                  {(doc.fields?.length ?? 0) > 0 && (
-                                    <span style={{ fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.25)' }}>
-                                      {doc.fields.length} campo{doc.fields.length !== 1 ? 's' : ''}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <DocToggle active={doc.active} onToggle={() => onToggleDoc(doc.code)} loading={!!docToggleLoad[doc.code]} />
-                              <button
-                                onClick={() => onDeleteDoc(doc.code)} disabled={!!docDeleteLoad[doc.code]}
+                          documents.map(doc => {
+                            const typeMeta = doc.doc_type_key ? (DOC_TYPE_META[doc.doc_type_key] ?? {}) : {}
+                            const TypeIcon = typeMeta.Icon ?? CreditCard
+                            return (
+                              <motion.div key={doc.code} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -10 }} layout
                                 style={{
-                                  width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                                  display: 'flex', alignItems: 'center', gap: 12,
+                                  padding: '11px 14px', borderRadius: 11,
+                                  background: doc.active ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)',
+                                  border: doc.active ? '1px solid rgba(255,255,255,0.08)' : `1px solid rgba(255,255,255,0.04)`,
+                                  opacity: doc.active ? 1 : 0.55,
+                                }}>
+                                <div style={{
+                                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  background: 'transparent', border: '1px solid rgba(255,255,255,0.08)',
-                                  cursor: docDeleteLoad[doc.code] ? 'wait' : 'pointer',
-                                  opacity: docDeleteLoad[doc.code] ? 0.5 : 1, transition: 'all 0.1s',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,23,93,0.1)'; e.currentTarget.style.borderColor = 'rgba(232,23,93,0.3)' }}
-                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-                              >
-                                {docDeleteLoad[doc.code] ? <Spinner size={11} /> : <Trash2 size={12} color="rgba(255,255,255,0.35)" />}
-                              </button>
-                            </motion.div>
-                          ))
-                        )}
-                      </AnimatePresence>
-
-                      <AnimatePresence>
-                        {showAddForm && (
-                          <motion.div key="add-form" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                            style={{ background: 'rgba(232,23,93,0.04)', border: '1px solid rgba(232,23,93,0.18)', borderRadius: 12, overflow: 'hidden' }}>
-                            <div style={{ padding: '16px' }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.55)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                                Nuevo documento
-                              </div>
-                              <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                                <div style={{ flex: '0 0 140px' }}>
-                                  <label style={{ display: 'block', fontSize: 9, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>CÓDIGO *</label>
-                                  <input value={formCode} onChange={e => setFormCode(e.target.value.toUpperCase())} placeholder="Ej: DNI_CO" maxLength={20}
-                                    style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 10px', fontSize: 12, fontFamily: FONT_MONO, letterSpacing: '0.04em', color: 'rgba(255,255,255,0.85)', outline: 'none' }} />
+                                  background: typeMeta.bg ?? 'rgba(255,255,255,0.05)',
+                                  border: `1px solid ${typeMeta.color ?? 'rgba(255,255,255,0.08)'}28`,
+                                }}>
+                                  <TypeIcon size={14} color={typeMeta.color ?? 'rgba(255,255,255,0.4)'} />
                                 </div>
-                                <div style={{ flex: 1, minWidth: 160 }}>
-                                  <label style={{ display: 'block', fontSize: 9, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>NOMBRE *</label>
-                                  <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Ej: Cédula de ciudadanía"
-                                    style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 10px', fontSize: 12, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.85)', outline: 'none' }} />
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
-                                {[
-                                  { key: 'hasBack', label: 'Tiene reverso', value: formHasBack, set: setFormHasBack },
-                                  { key: 'ocr',     label: 'OCR habilitado', value: formOcr,    set: setFormOcr },
-                                ].map(item => (
-                                  <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={item.value} onChange={e => item.set(e.target.checked)} style={{ accentColor: ACCENT, width: 13, height: 13, cursor: 'pointer' }} />
-                                    <span style={{ fontSize: 11, fontFamily: FONT_SORA, color: 'rgba(255,255,255,0.65)' }}>{item.label}</span>
-                                  </label>
-                                ))}
-                              </div>
-                              {availFields.length > 0 && (
-                                <div style={{ marginBottom: 14 }}>
-                                  <div style={{ fontSize: 9, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.35)', marginBottom: 8, letterSpacing: '0.06em' }}>CAMPOS OCR</div>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {availFields.map(f => {
-                                      const checked = formFields.includes(f.key)
-                                      return (
-                                        <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 6, cursor: 'pointer', background: checked ? 'rgba(99,179,237,0.1)' : 'rgba(255,255,255,0.03)', border: checked ? '1px solid rgba(99,179,237,0.25)' : `1px solid ${BORDER}`, transition: 'all 0.1s' }}>
-                                          <input type="checkbox" checked={checked} onChange={() => toggleFormField(f.key)} style={{ accentColor: BLUE, width: 11, height: 11, cursor: 'pointer' }} />
-                                          <span style={{ fontSize: 10, fontFamily: FONT_SORA, color: checked ? BLUE : 'rgba(255,255,255,0.5)' }}>{f.label}</span>
-                                        </label>
-                                      )
-                                    })}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: FONT_SORA }}>{doc.name}</span>
+                                    <span style={{
+                                      fontSize: 8, padding: '1px 5px', borderRadius: 4, flexShrink: 0,
+                                      background: 'rgba(232,23,93,0.08)', border: '1px solid rgba(232,23,93,0.18)',
+                                      fontFamily: FONT_MONO, letterSpacing: '0.04em', color: ACCENT, fontWeight: 700,
+                                    }}>
+                                      {doc.code}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                                    {doc.ocr_supported && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(99,179,237,0.7)', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,179,237,0.08)', border: '1px solid rgba(99,179,237,0.15)' }}>
+                                        <ScanLine size={8} /> OCR
+                                      </span>
+                                    )}
+                                    {doc.has_back && (
+                                      <span style={{ fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.3)', padding: '1px 5px', borderRadius: 3, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BORDER}` }}>reverso</span>
+                                    )}
+                                    {(doc.fields?.length ?? 0) > 0 && (
+                                      <span style={{ fontSize: 8, fontFamily: FONT_MONO, color: 'rgba(255,255,255,0.25)' }}>
+                                        {doc.fields.length} campo{doc.fields.length !== 1 ? 's' : ''}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
-                              )}
-                              {formError && <InlineError msg={formError} />}
-                              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                                <button onClick={onCancelAdd} disabled={formSaving} style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', background: 'transparent', border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: FONT_SORA, fontWeight: 600 }}>Cancelar</button>
-                                <button onClick={onSaveDoc} disabled={formSaving} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 18px', borderRadius: 8, cursor: formSaving ? 'wait' : 'pointer', background: ACCENT, border: 'none', color: '#fff', fontSize: 11, fontFamily: FONT_SORA, fontWeight: 700, boxShadow: '0 3px 12px rgba(232,23,93,0.28)', opacity: formSaving ? 0.7 : 1 }}>
-                                  {formSaving && <Spinner size={12} color="#fff" />} Guardar
+                                <DocToggle active={doc.active} onToggle={() => onToggleDoc(doc.code)} loading={!!docToggleLoad[doc.code]} />
+                                <button
+                                  onClick={() => onDeleteDoc(doc.code)} disabled={!!docDeleteLoad[doc.code]}
+                                  style={{
+                                    width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: 'transparent', border: '1px solid rgba(255,255,255,0.08)',
+                                    cursor: docDeleteLoad[doc.code] ? 'wait' : 'pointer',
+                                    opacity: docDeleteLoad[doc.code] ? 0.5 : 1, transition: 'all 0.1s',
+                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,23,93,0.1)'; e.currentTarget.style.borderColor = 'rgba(232,23,93,0.3)' }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                                >
+                                  {docDeleteLoad[doc.code] ? <Spinner size={11} /> : <Trash2 size={12} color="rgba(255,255,255,0.35)" />}
                                 </button>
-                              </div>
-                            </div>
-                          </motion.div>
+                              </motion.div>
+                            )
+                          })
                         )}
                       </AnimatePresence>
                     </div>
@@ -515,16 +898,10 @@ export default function SystemCountriesPage() {
   const [docDeleteLoad, setDocDeleteLoad] = useState({})
 
   const [availFields,   setAvailFields]   = useState([])
-  const fieldsLoadedRef = useRef(false)
+  const [docTypes,      setDocTypes]      = useState([])
+  const catalogLoadedRef = useRef(false)
 
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [formCode,    setFormCode]    = useState('')
-  const [formName,    setFormName]    = useState('')
-  const [formHasBack, setFormHasBack] = useState(true)
-  const [formOcr,     setFormOcr]     = useState(true)
-  const [formFields,  setFormFields]  = useState([])
-  const [formSaving,  setFormSaving]  = useState(false)
-  const [formError,   setFormError]   = useState('')
+  const [showAddModal,  setShowAddModal]  = useState(false)
 
   useEffect(() => {
     apiFetch(`${SERVER_URL}/system/countries`)
@@ -536,22 +913,26 @@ export default function SystemCountriesPage() {
 
   useEffect(() => {
     if (!selectedIso) return
-    setLoadingDocs(true); setDocsError(''); setDocuments([]); setShowAddForm(false)
+    setLoadingDocs(true); setDocsError(''); setDocuments([])
     apiFetch(`${SERVER_URL}/system/countries/${selectedIso}/documents`)
       .then(r => r.json()).then(d => setDocuments(d.documents ?? []))
       .catch(() => setDocsError('No se pudo cargar los documentos'))
       .finally(() => setLoadingDocs(false))
   }, [selectedIso])
 
-  const loadAvailFields = useCallback(() => {
-    if (fieldsLoadedRef.current) return
-    fieldsLoadedRef.current = true
-    apiFetch(`${SERVER_URL}/system/document-fields`)
-      .then(r => r.json()).then(d => setAvailFields(d.fields ?? []))
-      .catch(() => {})
+  const loadCatalog = useCallback(() => {
+    if (catalogLoadedRef.current) return
+    catalogLoadedRef.current = true
+    Promise.all([
+      apiFetch(`${SERVER_URL}/system/document-fields`).then(r => r.json()),
+      apiFetch(`${SERVER_URL}/system/document-types`).then(r => r.json()),
+    ]).then(([f, t]) => {
+      setAvailFields(f.fields ?? [])
+      setDocTypes(t.types ?? [])
+    }).catch(() => {})
   }, [])
 
-  useEffect(() => { if (selectedIso) loadAvailFields() }, [selectedIso, loadAvailFields])
+  useEffect(() => { if (selectedIso) loadCatalog() }, [selectedIso, loadCatalog])
 
   function handleToggleCountry(iso2) {
     setToggleLoading(p => ({ ...p, [iso2]: true }))
@@ -584,45 +965,44 @@ export default function SystemCountriesPage() {
       .finally(() => setDocDeleteLoad(p => { const n = { ...p }; delete n[code]; return n }))
   }
 
-  async function handleSaveDoc() {
-    const code = formCode.trim().toUpperCase(); const name = formName.trim()
-    if (!code) { setFormError('El código es obligatorio'); return }
-    if (!name) { setFormError('El nombre es obligatorio'); return }
-    setFormError(''); setFormSaving(true)
-    try {
-      const r = await apiFetch(`${SERVER_URL}/system/documents`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, name, countryIso: selectedIso, hasBack: formHasBack, ocrSupported: formOcr, fields: formFields }),
-      })
-      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message ?? `Error ${r.status}`) }
-      setDocuments(p => [...p, { id: Date.now(), code, name, has_back: formHasBack, ocr_supported: formOcr, active: true, fields: [] }])
-      setCountries(l => l.map(c => c.iso_2 === selectedIso ? { ...c, doc_templates: (c.doc_templates ?? 0) + 1 } : c))
-      setShowAddForm(false)
-    } catch (e) {
-      setFormError(e.message ?? 'Error al guardar')
-    } finally {
-      setFormSaving(false)
-    }
+  function handleDocSaved(newDoc) {
+    setDocuments(p => [...p, newDoc])
+    setCountries(l => l.map(c => c.iso_2 === selectedIso ? { ...c, doc_templates: (c.doc_templates ?? 0) + 1 } : c))
+    setShowAddModal(false)
   }
 
-  const totalActive = countries.filter(c => c.active).length
-  const totalDocs   = countries.reduce((s, c) => s + (c.doc_templates ?? 0), 0)
+  const [confirmIso,   setConfirmIso]   = useState(null)
+  const [confirming,   setConfirming]   = useState(false)
+
+  function handleRequestActivate(iso2) {
+    setConfirmIso(iso2)
+  }
+
+  async function handleConfirmActivate() {
+    setConfirming(true)
+    await new Promise(res => setTimeout(res, 0))
+    handleToggleCountry(confirmIso)
+    setConfirmIso(null)
+    setConfirming(false)
+  }
 
   return (
     <div>
       <PageHeader title="Catálogo del sistema" subtitle="Gestiona países disponibles y sus documentos base para todos los tenants." icon={Globe2} />
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
-        {[
-          { label: 'países activos',    value: totalActive, color: GREEN },
-          { label: 'templates totales', value: totalDocs,   color: BLUE },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 30, background: PANEL_BG, border: `1px solid ${BORDER}` }}>
-            <span style={{ fontSize: 18, fontWeight: 800, fontFamily: FONT_SORA, color, lineHeight: 1 }}>{value}</span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: FONT_MONO }}>{label}</span>
-          </div>
-        ))}
-      </div>
+      {confirmIso && (() => {
+        const cty = countries.find(c => c.iso_2 === confirmIso)
+        return cty ? (
+          <ActivationModal
+            country={cty}
+            documents={confirmIso === selectedIso ? documents : []}
+            loadingDocs={confirmIso === selectedIso ? loadingDocs : false}
+            confirming={confirming}
+            onConfirm={handleConfirmActivate}
+            onCancel={() => setConfirmIso(null)}
+          />
+        ) : null
+      })()}
 
       <AnimatePresence mode="wait">
         {!selectedIso ? (
@@ -634,24 +1014,25 @@ export default function SystemCountriesPage() {
           </motion.div>
         ) : (
           <motion.div key="detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {showAddModal && (
+              <AddDocumentModal
+                docTypes={docTypes}
+                availFields={availFields}
+                countryIso={selectedIso}
+                onSave={handleDocSaved}
+                onCancel={() => setShowAddModal(false)}
+              />
+            )}
             <CountryDetail
               countries={countries} selectedIso={selectedIso}
               search={search} onSearch={setSearch} onSelect={setSelectedIso}
               onBack={() => setSelectedIso(null)}
               onToggleCountry={handleToggleCountry} toggleLoading={toggleLoading}
+              onRequestActivate={handleRequestActivate}
               documents={documents} loadingDocs={loadingDocs} docsError={docsError}
               onToggleDoc={handleToggleDoc} docToggleLoad={docToggleLoad}
               onDeleteDoc={handleDeleteDoc} docDeleteLoad={docDeleteLoad}
-              showAddForm={showAddForm}
-              onOpenAdd={() => { setFormCode(''); setFormName(''); setFormHasBack(true); setFormOcr(true); setFormFields([]); setFormError(''); setShowAddForm(true) }}
-              onCancelAdd={() => { setShowAddForm(false); setFormError('') }}
-              formCode={formCode} setFormCode={setFormCode}
-              formName={formName} setFormName={setFormName}
-              formHasBack={formHasBack} setFormHasBack={setFormHasBack}
-              formOcr={formOcr} setFormOcr={setFormOcr}
-              formFields={formFields} toggleFormField={k => setFormFields(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k])}
-              availFields={availFields}
-              formSaving={formSaving} formError={formError} onSaveDoc={handleSaveDoc}
+              onOpenAdd={() => setShowAddModal(true)}
             />
           </motion.div>
         )}
