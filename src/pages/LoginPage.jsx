@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Zap } from 'lucide-react'
 import { useAuthStore } from '../store/useAuthStore'
+import { useTenantStore } from '../store/useTenantStore'
 import AnimatedBackground from '../components/background/AnimatedBackground'
 
 const SERVER_URL = import.meta.env.VITE_TENANT_API_URL ?? 'http://localhost:3001'
@@ -30,6 +31,11 @@ export default function LoginPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Credenciales inválidas')
       setUser(data)
+      // Si ya tiene tenant en BD → ya pasó el onboarding/setup en algún momento.
+      // Marcar setup completo localmente para que los guards de páginas lo respeten.
+      if ((data.tenants?.length ?? 0) > 0) {
+        useTenantStore.getState().setAdvancedField('_setupComplete', true)
+      }
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message)

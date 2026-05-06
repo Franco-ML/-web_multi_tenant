@@ -467,6 +467,11 @@ export default function DashboardLayout() {
     if (!isSuperTenant || !user) return
     const assignedCode = user.tenants?.[0]?.tenant_code
     if (!assignedCode) return
+    // Si ya tiene tenant en la BD pero el flag local quedó en false (otro dispositivo,
+    // localStorage limpio), marcarlo como completo para que no aparezca el wizard.
+    if (!setupComplete) {
+      useTenantStore.getState().setAdvancedField('_setupComplete', true)
+    }
     if (tenantCode === assignedCode) return   // ya cargado
     switchTenant(assignedCode)
   }, [isSuperTenant, user?.id]) // eslint-disable-line
