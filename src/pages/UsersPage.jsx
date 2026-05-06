@@ -340,8 +340,9 @@ const inputStyle = {
 
 // ── Fila de usuario ────────────────────────────────────────────────────────
 
-function UserRow({ user, onToggleActive, isOwnUser }) {
+function UserRow({ user, onToggleActive, isOwnUser, currentUserLevel }) {
   const initial = (user.username || user.email || '?')[0].toUpperCase()
+  const canAct  = !isOwnUser && (user.rol_level > currentUserLevel)
 
   return (
     <div style={{
@@ -378,6 +379,17 @@ function UserRow({ user, onToggleActive, isOwnUser }) {
               tú
             </span>
           )}
+          {user.tenant_name && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '2px 7px', borderRadius: 20,
+              background: 'rgba(10,132,255,0.07)',
+              border: '1px solid rgba(10,132,255,0.18)',
+              fontSize: 9, fontFamily: 'Space Mono', color: 'rgba(10,132,255,0.8)',
+            }}>
+              {user.tenant_name}
+            </span>
+          )}
           {user.country_name && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -397,24 +409,28 @@ function UserRow({ user, onToggleActive, isOwnUser }) {
       </div>
 
       <button
-        onClick={() => !isOwnUser && onToggleActive(user.id, !user.active)}
-        disabled={isOwnUser}
-        title={isOwnUser ? 'No podés desactivar tu propio usuario' : (user.active ? 'Desactivar usuario' : 'Reactivar usuario')}
+        onClick={() => canAct && onToggleActive(user.id, !user.active)}
+        disabled={!canAct}
+        title={
+          isOwnUser            ? 'No podés modificar tu propio usuario' :
+          !canAct              ? 'Sin permisos para modificar este usuario' :
+          user.active          ? 'Desactivar usuario' : 'Reactivar usuario'
+        }
         style={{
           width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-          background: isOwnUser
+          background: !canAct
             ? 'rgba(255,255,255,0.03)'
             : user.active
               ? 'rgba(255,59,48,0.07)'
               : 'rgba(52,199,89,0.07)',
-          border: `1px solid ${isOwnUser ? 'rgba(255,255,255,0.06)' : user.active ? 'rgba(255,59,48,0.15)' : 'rgba(52,199,89,0.15)'}`,
-          cursor: isOwnUser ? 'not-allowed' : 'pointer',
+          border: `1px solid ${!canAct ? 'rgba(255,255,255,0.06)' : user.active ? 'rgba(255,59,48,0.15)' : 'rgba(52,199,89,0.15)'}`,
+          cursor: !canAct ? 'not-allowed' : 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'all 0.15s',
-          opacity: isOwnUser ? 0.3 : 1,
+          opacity: !canAct ? 0.3 : 1,
         }}
       >
-        {isOwnUser
+        {!canAct
           ? <Ban size={11} color="rgba(255,255,255,0.3)" />
           : <Trash2 size={11} color={user.active ? 'rgba(255,59,48,0.7)' : 'rgba(52,199,89,0.7)'} />
         }
@@ -511,8 +527,12 @@ export default function UsersPage() {
     setLoading(true)
     setError(null)
     try {
+      const usersUrl = isSystem
+        ? `${SERVER_URL}/users?all=true`
+        : `${SERVER_URL}/users${tenantCode ? `?tenantCode=${tenantCode}` : ''}`
+
       const reqs = [
-        apiFetch(`${SERVER_URL}/users${tenantCode ? `?tenantCode=${tenantCode}` : ''}`),
+        apiFetch(usersUrl),
         apiFetch(`${SERVER_URL}/users/roles`),
       ]
       if (isSystem) reqs.push(apiFetch(`${SERVER_URL}/system/tenants`))
@@ -652,6 +672,7 @@ export default function UsersPage() {
                 user={u}
                 onToggleActive={handleToggleActive}
                 isOwnUser={u.id === currentUser?.id}
+                currentUserLevel={currentUserLevel}
               />
             ))}
             {inactiveUsers.length > 0 && (
@@ -670,6 +691,7 @@ export default function UsersPage() {
                     user={u}
                     onToggleActive={handleToggleActive}
                     isOwnUser={u.id === currentUser?.id}
+                    currentUserLevel={currentUserLevel}
                   />
                 ))}
               </>
