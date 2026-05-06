@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Users, UserPlus, Shield, Globe2, Trash2, RefreshCw, Eye, EyeOff, X, Info, Search } from 'lucide-react'
+import { Users, UserPlus, Shield, Globe2, Trash2, RefreshCw, Eye, EyeOff, X, Info, Search, ChevronDown, Ban } from 'lucide-react'
 import PageHeader from '../components/ui/PageHeader'
 import { useTenantStore } from '../store/useTenantStore'
+import { useAuthStore } from '../store/useAuthStore'
+import { useUserRole } from '../hooks/useUserRole'
 import { apiFetch } from '../lib/api.js'
 
 const SERVER_URL = import.meta.env.VITE_TENANT_API_URL ?? 'http://localhost:3001'
@@ -36,19 +38,54 @@ function RolBadge({ level, name }) {
   )
 }
 
+function SelectField({ value, onChange, children, required }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <select
+        required={required}
+        value={value}
+        onChange={onChange}
+        style={{
+          ...inputStyle,
+          cursor: 'pointer',
+          paddingRight: 32,
+          WebkitAppearance: 'none',
+          MozAppearance: 'none',
+          appearance: 'none',
+          colorScheme: 'dark',
+        }}
+        onFocus={e => e.target.style.borderColor = 'rgba(232,23,93,0.5)'}
+        onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+      >
+        {children}
+      </select>
+      <ChevronDown
+        size={12}
+        color="rgba(255,255,255,0.3)"
+        style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+      />
+    </div>
+  )
+}
+
 // ── Modal crear usuario ────────────────────────────────────────────────────
 
-function CreateUserModal({ roles, tenantCode, countryConfigs, onClose, onCreated }) {
-  const [form, setForm]     = useState({ username: '', email: '', password: '', rolId: '', countryCode: '' })
+function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenants, onClose, onCreated }) {
+  const [form, setForm]       = useState({ username: '', email: '', password: '', rolId: '', tenantCode: '', countryCode: '' })
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError]   = useState(null)
+  const [error, setError]     = useState(null)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const selectedRol = roles.find(r => r.id === Number(form.rolId))
-  const isTenantLevel = selectedRol && selectedRol.level >= 10
-  const needsCountry  = selectedRol && selectedRol.level === 11
+  const selectedRol        = roles.find(r => r.id === Number(form.rolId))
+  const isTenantLevel      = selectedRol && selectedRol.level >= 10
+  const needsCountry       = selectedRol && selectedRol.level === 11
+  const effectiveTenantCode = isSystem ? form.tenantCode : tenantCode
+
+  const tenantCountries = isSystem
+    ? (allTenants.find(t => t.code === form.tenantCode)?.countries ?? [])
+    : countryConfigs.map(c => ({ iso_2: c.countryCode, name: c.name ?? c.countryCode }))
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -60,7 +97,7 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, onClose, onCreated
         email:       form.email.trim(),
         password:    form.password,
         rolId:       Number(form.rolId),
-        tenantCode:  isTenantLevel ? tenantCode : undefined,
+        tenantCode:  isTenantLevel ? effectiveTenantCode : undefined,
         countryCode: needsCountry  ? form.countryCode : undefined,
       }
       const res = await apiFetch(`${SERVER_URL}/users`, {
@@ -84,14 +121,13 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, onClose, onCreated
       position: 'fixed', inset: 0, zIndex: 1000,
       background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
         width: 440, background: '#0D1017',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: 20, overflow: 'hidden',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
       }}>
-        {/* Header */}
         <div style={{
           padding: '20px 24px 16px',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -118,7 +154,6 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, onClose, onCreated
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="Nombre de usuario *">
             <input
@@ -165,18 +200,12 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, onClose, onCreated
           </Field>
 
           <Field label="Rol *">
-            <select
-              required value={form.rolId}
-              onChange={e => set('rolId', e.target.value)}
-              style={{ ...inputStyle, cursor: 'pointer' }}
-            >
+            <SelectField required value={form.rolId} onChange={e => { set('rolId', e.target.value); set('tenantCode', ''); set('countryCode', '') }}>
               <option value="">Seleccionar rol…</option>
               {roles.map(r => (
-                <option key={r.id} value={r.id}>
-                  L{r.level} — {r.name}
-                </option>
+                <option key={r.id} value={r.id}>L{r.level} — {r.name}</option>
               ))}
-            </select>
+            </SelectField>
           </Field>
 
           {selectedRol && (
@@ -191,20 +220,27 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, onClose, onCreated
             </div>
           )}
 
-          {needsCountry && countryConfigs.length > 0 && (
+          {isSystem && isTenantLevel && (
+            <Field label="Tenant *">
+              <SelectField required value={form.tenantCode} onChange={e => { set('tenantCode', e.target.value); set('countryCode', '') }}>
+                <option value="">Seleccionar tenant…</option>
+                {allTenants.map(t => (
+                  <option key={t.code} value={t.code}>{t.name}</option>
+                ))}
+              </SelectField>
+            </Field>
+          )}
+
+          {needsCountry && tenantCountries.length > 0 && (!isSystem || form.tenantCode) && (
             <Field label="País asignado *">
-              <select
-                required value={form.countryCode}
-                onChange={e => set('countryCode', e.target.value)}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
+              <SelectField required value={form.countryCode} onChange={e => set('countryCode', e.target.value)}>
                 <option value="">Seleccionar país…</option>
-                {countryConfigs.map(c => (
-                  <option key={c.countryCode} value={c.countryCode}>
-                    {c.name ?? c.countryCode}
+                {tenantCountries.map(c => (
+                  <option key={c.iso_2 ?? c.countryCode} value={c.iso_2 ?? c.countryCode}>
+                    {c.name ?? c.iso_2 ?? c.countryCode}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </Field>
           )}
 
@@ -264,7 +300,7 @@ const inputStyle = {
 
 // ── Fila de usuario ────────────────────────────────────────────────────────
 
-function UserRow({ user, onToggleActive }) {
+function UserRow({ user, onToggleActive, isOwnUser }) {
   const initial = (user.username || user.email || '?')[0].toUpperCase()
 
   return (
@@ -275,7 +311,6 @@ function UserRow({ user, onToggleActive }) {
       opacity: user.active ? 1 : 0.45,
       transition: 'opacity 0.2s',
     }}>
-      {/* Avatar */}
       <div style={{
         width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
         background: `linear-gradient(135deg, rgba(232,23,93,0.4), rgba(232,23,93,0.15))`,
@@ -287,13 +322,22 @@ function UserRow({ user, onToggleActive }) {
         {initial}
       </div>
 
-      {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora' }}>
             {user.username}
           </span>
           <RolBadge level={user.rol_level} name={user.rol_name} />
+          {isOwnUser && (
+            <span style={{
+              padding: '2px 7px', borderRadius: 20,
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              fontSize: 9, fontFamily: 'Space Mono', color: 'rgba(255,255,255,0.3)',
+            }}>
+              tú
+            </span>
+          )}
           {user.country_name && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -312,19 +356,28 @@ function UserRow({ user, onToggleActive }) {
         </div>
       </div>
 
-      {/* Acción */}
       <button
-        onClick={() => onToggleActive(user.id, !user.active)}
-        title={user.active ? 'Desactivar usuario' : 'Reactivar usuario'}
+        onClick={() => !isOwnUser && onToggleActive(user.id, !user.active)}
+        disabled={isOwnUser}
+        title={isOwnUser ? 'No podés desactivar tu propio usuario' : (user.active ? 'Desactivar usuario' : 'Reactivar usuario')}
         style={{
           width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-          background: user.active ? 'rgba(255,59,48,0.07)' : 'rgba(52,199,89,0.07)',
-          border: `1px solid ${user.active ? 'rgba(255,59,48,0.15)' : 'rgba(52,199,89,0.15)'}`,
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: isOwnUser
+            ? 'rgba(255,255,255,0.03)'
+            : user.active
+              ? 'rgba(255,59,48,0.07)'
+              : 'rgba(52,199,89,0.07)',
+          border: `1px solid ${isOwnUser ? 'rgba(255,255,255,0.06)' : user.active ? 'rgba(255,59,48,0.15)' : 'rgba(52,199,89,0.15)'}`,
+          cursor: isOwnUser ? 'not-allowed' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'all 0.15s',
+          opacity: isOwnUser ? 0.3 : 1,
         }}
       >
-        <Trash2 size={11} color={user.active ? 'rgba(255,59,48,0.7)' : 'rgba(52,199,89,0.7)'} />
+        {isOwnUser
+          ? <Ban size={11} color="rgba(255,255,255,0.3)" />
+          : <Trash2 size={11} color={user.active ? 'rgba(255,59,48,0.7)' : 'rgba(52,199,89,0.7)'} />
+        }
       </button>
     </div>
   )
@@ -401,49 +454,63 @@ function RolesInfoPopover({ roles }) {
 }
 
 export default function UsersPage() {
-  const tenantCode    = useTenantStore((s) => s.advanced.tenantCode)
-  const countryConfigs = useTenantStore((s) => s.countryConfigs ?? [])
+  const tenantCode     = useTenantStore(s => s.advanced.tenantCode)
+  const countryConfigs = useTenantStore(s => s.countryConfigs ?? [])
+  const currentUser    = useAuthStore(s => s.user)
+  const { isSystem }   = useUserRole()
 
-  const [users,     setUsers]     = useState([])
-  const [roles,     setRoles]     = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
-  const [showModal, setShowModal] = useState(false)
-  const [search,    setSearch]    = useState('')
+  const [users,      setUsers]      = useState([])
+  const [roles,      setRoles]      = useState([])
+  const [allTenants, setAllTenants] = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState(null)
+  const [showModal,  setShowModal]  = useState(false)
+  const [search,     setSearch]     = useState('')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [uRes, rRes] = await Promise.all([
+      const reqs = [
         apiFetch(`${SERVER_URL}/users${tenantCode ? `?tenantCode=${tenantCode}` : ''}`),
         apiFetch(`${SERVER_URL}/users/roles`),
-      ])
-      const [u, r] = await Promise.all([uRes.json(), rRes.json()])
-      if (!uRes.ok) throw new Error(u.error ?? 'Error al cargar usuarios')
+      ]
+      if (isSystem) reqs.push(apiFetch(`${SERVER_URL}/system/tenants`))
+
+      const responses = await Promise.all(reqs)
+      const [u, r, t] = await Promise.all(responses.map(r => r.json()))
+
+      if (!responses[0].ok) throw new Error(u.error ?? 'Error al cargar usuarios')
       setUsers(u)
       setRoles(r)
+      if (isSystem && t?.tenants) setAllTenants(t.tenants)
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [tenantCode])
+  }, [tenantCode, isSystem])
 
   useEffect(() => { fetchData() }, [fetchData])
 
   async function handleToggleActive(id, active) {
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, active } : u))
     try {
-      await apiFetch(`${SERVER_URL}/users/${id}`, {
+      const res = await apiFetch(`${SERVER_URL}/users/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active }),
       })
-      setUsers(prev => prev.map(u => u.id === id ? { ...u, active } : u))
-    } catch (err) {
-      console.error(err)
+      if (!res.ok) {
+        setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !active } : u))
+      }
+    } catch {
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !active } : u))
     }
   }
+
+  const currentUserLevel = currentUser?.rol?.level ?? 99
+  const creatableRoles   = roles.filter(r => r.level > currentUserLevel)
 
   const q = search.trim().toLowerCase()
   const filtered = users.filter(u =>
@@ -463,9 +530,7 @@ export default function UsersPage() {
         icon={Users}
       />
 
-      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        {/* Buscador */}
         <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
           <Search size={12} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
           <input
@@ -509,7 +574,6 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Lista */}
       <div style={{
         background: 'rgba(255,255,255,0.03)',
         border: '1px solid rgba(255,255,255,0.07)',
@@ -543,7 +607,12 @@ export default function UsersPage() {
         ) : (
           <>
             {activeUsers.map(u => (
-              <UserRow key={u.id} user={u} onToggleActive={handleToggleActive} />
+              <UserRow
+                key={u.id}
+                user={u}
+                onToggleActive={handleToggleActive}
+                isOwnUser={u.id === currentUser?.id}
+              />
             ))}
             {inactiveUsers.length > 0 && (
               <>
@@ -556,7 +625,12 @@ export default function UsersPage() {
                   Inactivos ({inactiveUsers.length})
                 </div>
                 {inactiveUsers.map(u => (
-                  <UserRow key={u.id} user={u} onToggleActive={handleToggleActive} />
+                  <UserRow
+                    key={u.id}
+                    user={u}
+                    onToggleActive={handleToggleActive}
+                    isOwnUser={u.id === currentUser?.id}
+                  />
                 ))}
               </>
             )}
@@ -566,9 +640,11 @@ export default function UsersPage() {
 
       {showModal && (
         <CreateUserModal
-          roles={roles}
+          roles={creatableRoles}
           tenantCode={tenantCode}
           countryConfigs={countryConfigs}
+          isSystem={isSystem}
+          allTenants={allTenants}
           onClose={() => setShowModal(false)}
           onCreated={fetchData}
         />

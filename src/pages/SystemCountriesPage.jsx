@@ -6,7 +6,7 @@ import {
   Globe2, FileText, Search, Plus, Trash2, ScanLine,
   ToggleLeft, ToggleRight, Loader, AlertCircle, ChevronLeft, X,
   CheckCircle2, CreditCard, FlipHorizontal, Car, BookOpen,
-  Home, Heart, Truck, Baby, ChevronRight, ArrowLeft,
+  Home, Heart, Truck, Baby, ChevronRight, ArrowLeft, MapPin, ChevronDown,
 } from 'lucide-react'
 import { useUserRole } from '../hooks/useUserRole'
 import { apiFetch } from '../lib/api'
@@ -257,9 +257,198 @@ function ActivationModal({ country, documents, loadingDocs, confirming, onConfir
   )
 }
 
+// ─── Modal nuevo país ─────────────────────────────────────────────────────────
+
+function NewCountryModal({ onSave, onCancel }) {
+  const [form, setForm]   = useState({ name: '', iso2: '', iso3: '', phoneCode: '', defaultLocale: '' })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!form.name.trim() || !form.iso2.trim()) return
+    setError('')
+    setLoading(true)
+    try {
+      const res = await apiFetch(`${SERVER_URL}/system/countries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:          form.name.trim(),
+          iso2:          form.iso2.trim().toUpperCase().slice(0, 2),
+          iso3:          form.iso3.trim().toUpperCase().slice(0, 3) || undefined,
+          phoneCode:     form.phoneCode.trim() || undefined,
+          defaultLocale: form.defaultLocale.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`)
+      onSave(data.country)
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
+  }
+
+  const fieldStyle = {
+    width: '100%', padding: '9px 12px', borderRadius: 9, boxSizing: 'border-box',
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: FONT_SORA, outline: 'none',
+    transition: 'border-color 0.15s',
+  }
+  const labelStyle = {
+    display: 'block', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)',
+    fontFamily: FONT_MONO, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5,
+  }
+
+  return createPortal(
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 2000,
+      background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={e => e.target === e.currentTarget && onCancel()}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.18 }}
+        style={{
+          width: 420, background: '#0D1017',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 20, overflow: 'hidden',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
+        }}
+      >
+        <div style={{
+          padding: '18px 22px 14px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 9,
+              background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <MapPin size={13} color={BLUE} />
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: FONT_SORA }}>
+              Nuevo país
+            </span>
+          </div>
+          <button onClick={onCancel} style={{
+            width: 26, height: 26, borderRadius: 7, background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <X size={11} color="rgba(255,255,255,0.4)" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 13 }}>
+          <div>
+            <label style={labelStyle}>Nombre *</label>
+            <input
+              autoFocus required value={form.name}
+              onChange={e => set('name', e.target.value)}
+              placeholder="Ej: Costa Rica"
+              style={fieldStyle}
+              onFocus={e => e.target.style.borderColor = 'rgba(99,179,237,0.5)'}
+              onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={labelStyle}>ISO 2 * <span style={{ color: 'rgba(255,255,255,0.2)' }}>(2 letras)</span></label>
+              <input
+                required value={form.iso2}
+                onChange={e => set('iso2', e.target.value.toUpperCase().slice(0, 2))}
+                placeholder="CR"
+                style={{ ...fieldStyle, fontFamily: FONT_MONO, letterSpacing: '0.05em' }}
+                maxLength={2}
+                onFocus={e => e.target.style.borderColor = 'rgba(99,179,237,0.5)'}
+                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>ISO 3 <span style={{ color: 'rgba(255,255,255,0.2)' }}>(3 letras)</span></label>
+              <input
+                value={form.iso3}
+                onChange={e => set('iso3', e.target.value.toUpperCase().slice(0, 3))}
+                placeholder="CRI"
+                style={{ ...fieldStyle, fontFamily: FONT_MONO, letterSpacing: '0.05em' }}
+                maxLength={3}
+                onFocus={e => e.target.style.borderColor = 'rgba(99,179,237,0.5)'}
+                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={labelStyle}>Código telefónico</label>
+              <input
+                value={form.phoneCode}
+                onChange={e => set('phoneCode', e.target.value.replace(/\D/g, ''))}
+                placeholder="506"
+                style={{ ...fieldStyle, fontFamily: FONT_MONO }}
+                onFocus={e => e.target.style.borderColor = 'rgba(99,179,237,0.5)'}
+                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Locale por defecto</label>
+              <input
+                value={form.defaultLocale}
+                onChange={e => set('defaultLocale', e.target.value.slice(0, 5))}
+                placeholder="es-CR"
+                style={{ ...fieldStyle, fontFamily: FONT_MONO }}
+                onFocus={e => e.target.style.borderColor = 'rgba(99,179,237,0.5)'}
+                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 8,
+              background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.2)',
+              fontSize: 10, fontFamily: FONT_MONO, color: 'rgba(255,59,48,0.8)',
+            }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <button type="button" onClick={onCancel} style={{
+              flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer',
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.4)', fontSize: 12, fontFamily: FONT_SORA,
+            }}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading || !form.name.trim() || !form.iso2.trim()} style={{
+              flex: 1, padding: '10px', borderRadius: 10, border: 'none',
+              background: (!form.name.trim() || !form.iso2.trim()) ? 'rgba(99,179,237,0.3)' : BLUE,
+              color: '#fff', fontSize: 12, fontFamily: FONT_SORA, fontWeight: 600,
+              cursor: loading || !form.name.trim() || !form.iso2.trim() ? 'default' : 'pointer',
+            }}>
+              {loading ? 'Creando…' : 'Crear país'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>,
+    document.body
+  )
+}
+
 // ─── Vista grid — ningún país seleccionado ────────────────────────────────────
 
-function CountryGrid({ countries, loading, error, search, onSearch, onSelect }) {
+function CountryGrid({ countries, loading, error, search, onSearch, onSelect, onNewCountry }) {
   const filtered = countries.filter(c =>
     c.name?.toLowerCase().includes(search.toLowerCase()) ||
     c.iso_2?.toLowerCase().includes(search.toLowerCase())
@@ -267,24 +456,38 @@ function CountryGrid({ countries, loading, error, search, onSearch, onSelect }) 
 
   return (
     <div>
-      {/* Buscador */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
-        background: 'rgba(255,255,255,0.04)', border: `1px solid ${BORDER}`,
-        borderRadius: 10, padding: '9px 14px', maxWidth: 340,
-      }}>
-        <Search size={13} color="rgba(255,255,255,0.3)" />
-        <input
-          value={search} onChange={e => onSearch(e.target.value)}
-          placeholder="Buscar país…"
-          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none',
-            fontSize: 12, color: 'rgba(255,255,255,0.8)', fontFamily: FONT_SORA }}
-        />
-        {search && (
-          <button onClick={() => onSearch('')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <X size={11} color="rgba(255,255,255,0.3)" />
-          </button>
-        )}
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flex: 1, maxWidth: 340,
+          background: 'rgba(255,255,255,0.04)', border: `1px solid ${BORDER}`,
+          borderRadius: 10, padding: '9px 14px',
+        }}>
+          <Search size={13} color="rgba(255,255,255,0.3)" />
+          <input
+            value={search} onChange={e => onSearch(e.target.value)}
+            placeholder="Buscar país…"
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              fontSize: 12, color: 'rgba(255,255,255,0.8)', fontFamily: FONT_SORA }}
+          />
+          {search && (
+            <button onClick={() => onSearch('')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
+              <X size={11} color="rgba(255,255,255,0.3)" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={onNewCountry}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '9px 14px', borderRadius: 9, cursor: 'pointer',
+            background: BLUE, border: 'none',
+            color: '#fff', fontSize: 11, fontFamily: FONT_SORA, fontWeight: 700,
+            boxShadow: `0 3px 14px ${BLUE}40`, flexShrink: 0,
+          }}
+        >
+          <Plus size={13} /> Nuevo país
+        </button>
       </div>
 
       {loading ? (
@@ -901,7 +1104,8 @@ export default function SystemCountriesPage() {
   const [docTypes,      setDocTypes]      = useState([])
   const catalogLoadedRef = useRef(false)
 
-  const [showAddModal,  setShowAddModal]  = useState(false)
+  const [showAddModal,      setShowAddModal]      = useState(false)
+  const [showNewCountry,    setShowNewCountry]    = useState(false)
 
   useEffect(() => {
     apiFetch(`${SERVER_URL}/system/countries`)
@@ -971,6 +1175,11 @@ export default function SystemCountriesPage() {
     setShowAddModal(false)
   }
 
+  function handleCountrySaved(newCountry) {
+    setCountries(p => [...p, { ...newCountry, doc_templates: 0, doc_templates_active: 0 }])
+    setShowNewCountry(false)
+  }
+
   const [confirmIso,   setConfirmIso]   = useState(null)
   const [confirming,   setConfirming]   = useState(false)
 
@@ -1004,12 +1213,19 @@ export default function SystemCountriesPage() {
         ) : null
       })()}
 
+      {showNewCountry && (
+        <AnimatePresence>
+          <NewCountryModal onSave={handleCountrySaved} onCancel={() => setShowNewCountry(false)} />
+        </AnimatePresence>
+      )}
+
       <AnimatePresence mode="wait">
         {!selectedIso ? (
           <motion.div key="grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <CountryGrid
               countries={countries} loading={loadingList} error={listError}
               search={search} onSearch={setSearch} onSelect={setSelectedIso}
+              onNewCountry={() => setShowNewCountry(true)}
             />
           </motion.div>
         ) : (
