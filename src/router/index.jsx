@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { useUserRole } from '../hooks/useUserRole'
 import DashboardLayout from '../layouts/DashboardLayout'
 import LoginPage from '../pages/LoginPage'
 import BrandPage from '../pages/BrandPage'
@@ -20,6 +21,11 @@ import DocumentsPage from '../pages/DocumentsPage'
 import InheritancePage from '../pages/InheritancePage'
 import UsersPage from '../pages/UsersPage'
 
+function RootRedirect() {
+  const { isSystem } = useUserRole()
+  return <Navigate to={isSystem ? '/system/tenants' : '/brand'} replace />
+}
+
 // import.meta.env.BASE_URL refleja el `base` del vite.config.js
 // (en dev: '/', en producción GitHub Pages: '/-web_multi_tenant/')
 // React Router necesita basename SIN trailing slash final.
@@ -31,7 +37,7 @@ export const router = createBrowserRouter([
     path: '/',
     element: <DashboardLayout />,
     children: [
-      { index: true,          element: <Navigate to="/brand" replace /> },
+      { index: true,          element: <RootRedirect /> },
       { path: 'brand',        element: <BrandPage /> },
       { path: 'locale',       element: <LocalePage /> },
       { path: 'modules',      element: <ModulesPage /> },

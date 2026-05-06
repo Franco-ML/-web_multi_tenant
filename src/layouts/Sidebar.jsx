@@ -32,9 +32,9 @@ const NAV_COUNTRY_ADMIN = [
 ]
 
 const NAV_SYSTEM = [
-  { to: '/system/countries', label: 'Catálogo de países', desc: 'Países y documentos base', Icon: Globe2 },
-  { to: '/system/tenants',   label: 'Tenants',            desc: 'Empresas registradas',     Icon: Building2 },
-  { to: '/users',            label: 'Usuarios del sistema', desc: 'Admins y operadores',    Icon: Users },
+  { to: '/system/tenants',   label: 'Tenants',              desc: 'Empresas registradas',     Icon: Building2 },
+  { to: '/system/countries', label: 'Catálogo de países',   desc: 'Países y documentos base', Icon: Globe2 },
+  { to: '/users',            label: 'Usuarios del sistema', desc: 'Admins y operadores',      Icon: Users },
 ]
 
 function TenantSwitcher({ primaryColor, onOpenCreateModal }) {
