@@ -227,6 +227,7 @@ const defaultConfig = {
     logoUrl: '',
     logoPreviewUrl: null,
     logoFile: null,
+    logoPosition: '50% 50%',    // object-position para centrado/reposicionado del logo
   },
   countryConfigs: [],            // vacío — el usuario elige desde el wizard/picker
   countryVersions: [],           // archivo de snapshots cuando se cambia herencia
@@ -238,6 +239,9 @@ const defaultConfig = {
   login: {
     phoneEnabled: true,
     emailEnabled: true,
+    pinRequired: true,
+    pinLength: 4,
+    pinRecoveryViaEmail: true,
   },
   features: {
     routesEnabled: true,
@@ -247,6 +251,12 @@ const defaultConfig = {
     darkModeToggleEnabled: true,
     analyticsEnabled: false,
     crashReportingEnabled: false,
+  },
+  paymentMethods: {
+    cash:     { enabled: true  },
+    card:     { enabled: false },
+    wallet:   { enabled: false },
+    transfer: { enabled: false },
   },
   registration: {
     steps: DEFAULT_REGISTRATION_STEPS.map(s => ({ ...s })),
@@ -263,7 +273,8 @@ const defaultConfig = {
     googleMapsApiKey: '',
     appEnv: 'prod',
     supportWebUrl: '',
-    supportPhone: '',
+    supportCenterPhone: '',
+    emergencyPhone: '',
     _setupComplete: false,
   },
 }
@@ -279,6 +290,9 @@ export const useTenantStore = create(
   // Estado transitorio de UI, NO se persiste
   activeCountry: null,
   setActiveCountry: (countryCode) => set({ activeCountry: countryCode }),
+
+  systemSimOpen: false,
+  setSystemSimOpen: (v) => set({ systemSimOpen: v }),
 
   setBrandingField: (field, value) =>
     set((state) => ({ branding: { ...state.branding, [field]: value } })),
@@ -357,6 +371,7 @@ export const useTenantStore = create(
     const allInherit = {
       branding: 'inherit', theme: 'inherit', features: 'inherit',
       registration: 'inherit', i18n: 'inherit', login: 'inherit', advanced: 'inherit',
+      paymentMethods: 'inherit',
     }
     const newCountry = {
       ...catEntry,
@@ -368,7 +383,7 @@ export const useTenantStore = create(
       customModules: customModules ?? {},
       createdAt: now,
       updatedAt: now,
-      totalSteps: 7,
+      totalSteps: 5,
       draftStep: 0,
     }
     if (mode === 'inherit-base') {
@@ -479,6 +494,23 @@ export const useTenantStore = create(
       ),
     })),
 
+  setPaymentMethod: (key, enabled) =>
+    set((state) => ({
+      paymentMethods: {
+        ...state.paymentMethods,
+        [key]: { ...state.paymentMethods[key], enabled },
+      },
+    })),
+
+  setCountryDocumentsMode: (countryId, useCustom) =>
+    set((state) => ({
+      countryConfigs: state.countryConfigs.map(c =>
+        c.id === countryId
+          ? { ...c, documents: useCustom ? (c.documents ?? []) : null, updatedAt: new Date().toISOString() }
+          : c
+      ),
+    })),
+
   deactivateCountry: (countryId) =>
     set((state) => ({
       countryConfigs: state.countryConfigs.map(c =>
@@ -518,6 +550,26 @@ export const useTenantStore = create(
   // Solo cambia el modo predeterminado — NO resetea ninguna paleta
   setColorMode: (mode) =>
     set((state) => ({ theme: { ...state.theme, colorMode: mode } })),
+
+  // Bloques disponibles: 'brand', 'status', 'background', 'text', 'border'
+  resetThemeBlock: (blockName) => {
+    const BLOCK_KEYS = {
+      brand:      ['primary', 'primaryLight', 'primaryDark'],
+      status:     ['success', 'warning', 'error', 'info'],
+      background: ['background', 'backgroundSecondary', 'surface', 'surfaceSecondary', 'surfaceElevated'],
+      text:       ['textPrimary', 'textSecondary', 'textDisabled', 'textInverse'],
+      border:     ['border', 'borderLight', 'borderFocus'],
+    }
+    const keys = BLOCK_KEYS[blockName] ?? []
+    if (!keys.length) return
+    set((state) => ({
+      theme: {
+        ...state.theme,
+        light: keys.reduce((acc, k) => ({ ...acc, [k]: defaultColors[k] }), { ...state.theme.light }),
+        dark:  keys.reduce((acc, k) => ({ ...acc, [k]: darkColors[k]   }), { ...state.theme.dark  }),
+      },
+    }))
+  },
 
   setFeature: (featureKey, enabled) =>
     set((state) => ({
@@ -641,20 +693,33 @@ export const useTenantStore = create(
         parsedCountries = [{ ...parsed.locale, isPrimary: true, idTypes: null, documents: null }]
       }
 
-      // Migra: tenantId → tenantCode
+      // Migra: tenantId → tenantCode; supportPhone → supportCenterPhone
       let parsedAdvanced = parsed.advanced ?? null
       if (parsedAdvanced && parsedAdvanced.tenantId && !parsedAdvanced.tenantCode) {
         parsedAdvanced = { ...parsedAdvanced, tenantCode: parsedAdvanced.tenantId }
         delete parsedAdvanced.tenantId
+      }
+      if (parsedAdvanced && parsedAdvanced.supportPhone !== undefined && parsedAdvanced.supportCenterPhone === undefined) {
+        parsedAdvanced = { ...parsedAdvanced, supportCenterPhone: parsedAdvanced.supportPhone }
+        delete parsedAdvanced.supportPhone
+      }
+      // Si tenantCode no vino en advanced pero sí en el root del JSON, lo inyectamos
+      if (parsed.tenantCode && parsedAdvanced && !parsedAdvanced.tenantCode) {
+        parsedAdvanced = { ...parsedAdvanced, tenantCode: parsed.tenantCode }
+      }
+      // Si _setupComplete no vino del server (exportToJson no lo incluía), conservar el valor actual
+      if (parsedAdvanced && parsedAdvanced._setupComplete === undefined) {
+        parsedAdvanced = { ...parsedAdvanced, _setupComplete: get().advanced._setupComplete ?? false }
       }
 
       set((state) => ({
         branding:        { ...state.branding, ...parsed.branding, logoFile: null, logoPreviewUrl: parsed.branding?.logoUrl || null },
         countryConfigs:  parsedCountries    ?? state.countryConfigs,
         theme:           parsedTheme        ?? state.theme,
-        login:        parsed.login      ?? state.login,
-        features:     parsed.features   ?? state.features,
-        registration: parsed.registration ?? state.registration,
+        login:           parsed.login           ?? state.login,
+        features:        parsed.features        ?? state.features,
+        paymentMethods:  parsed.paymentMethods  ?? state.paymentMethods,
+        registration:    parsed.registration    ?? state.registration,
         i18n:         parsedI18n        ?? state.i18n,
         advanced:     parsedAdvanced    ?? state.advanced,
       }))
@@ -665,7 +730,7 @@ export const useTenantStore = create(
   },
 
   exportToJson: () => {
-    const { branding, countryConfigs, theme, login, features, registration, i18n, advanced } = get()
+    const { branding, countryConfigs, theme, login, features, paymentMethods, registration, i18n, advanced } = get()
     const tenantCode = advanced.tenantCode || 'moover'
     return JSON.stringify(
       {
@@ -682,6 +747,7 @@ export const useTenantStore = create(
         },
         login,
         features,
+        paymentMethods,
         countryConfigs,
         registration: {
           steps: registration.steps
@@ -690,10 +756,14 @@ export const useTenantStore = create(
         },
         i18n,
         advanced: {
+          tenantCode: advanced.tenantCode,
           apiUrl: advanced.apiUrl,
           appEnv: advanced.appEnv,
           sentryDsn: advanced.sentryDsn,
           googleMapsApiKey: advanced.googleMapsApiKey,
+          supportWebUrl: advanced.supportWebUrl,
+          supportCenterPhone: advanced.supportCenterPhone,
+          emergencyPhone: advanced.emergencyPhone,
         },
       },
       null,
@@ -703,7 +773,7 @@ export const useTenantStore = create(
     }),
     {
       name: 'moover-tenant-config',
-      version: 6,
+      version: 8,
       migrate: (saved, version) => {
         if (version < 2) {
           if (saved.theme?.colors) {
@@ -766,6 +836,36 @@ export const useTenantStore = create(
           // Snapshot archive store (vacío al migrar)
           if (!saved.countryVersions) saved.countryVersions = []
         }
+        if (version < 7) {
+          // supportPhone → supportCenterPhone
+          if (!saved.advanced) saved.advanced = {}
+          if (saved.advanced.supportPhone !== undefined && saved.advanced.supportCenterPhone === undefined) {
+            saved.advanced.supportCenterPhone = saved.advanced.supportPhone
+            delete saved.advanced.supportPhone
+          }
+          if (saved.advanced.emergencyPhone === undefined) saved.advanced.emergencyPhone = ''
+          // PIN defaults en login
+          if (!saved.login) saved.login = {}
+          if (saved.login.pinRequired        === undefined) saved.login.pinRequired        = true
+          if (saved.login.pinLength          === undefined) saved.login.pinLength          = 4
+          if (saved.login.pinRecoveryViaEmail === undefined) saved.login.pinRecoveryViaEmail = true
+        }
+        if (version < 8) {
+          // paymentMethods — estructura base del tenant
+          if (!saved.paymentMethods) {
+            saved.paymentMethods = { cash: { enabled: true }, card: { enabled: false }, wallet: { enabled: false }, transfer: { enabled: false } }
+          }
+          // totalSteps corregido a 5 (el wizard real tiene 5 pasos)
+          if (Array.isArray(saved.countryConfigs)) {
+            saved.countryConfigs = saved.countryConfigs.map(c => ({
+              ...c,
+              totalSteps: 5,
+              moduleModes: c.moduleModes?.paymentMethods !== undefined
+                ? c.moduleModes
+                : { ...c.moduleModes, paymentMethods: 'inherit' },
+            }))
+          }
+        }
         return saved
       },
       partialize: (state) => ({
@@ -775,6 +875,7 @@ export const useTenantStore = create(
         theme:           state.theme,
         login:           state.login,
         features:        state.features,
+        paymentMethods:  state.paymentMethods,
         registration:    state.registration,
         i18n:            state.i18n,
         advanced:        state.advanced,

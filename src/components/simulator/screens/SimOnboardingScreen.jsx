@@ -61,7 +61,7 @@ export default function SimOnboardingScreen() {
             transition: 'border-color 0.3s ease',
           }}>
             {branding.logoPreviewUrl ? (
-              <img src={branding.logoPreviewUrl} alt="logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6 }} />
+              <img src={branding.logoPreviewUrl} alt="logo" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: '50%' }} />
             ) : (
               <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--sim-primary)', transition: 'color 0.3s ease' }}>
                 {initial}

@@ -7,6 +7,7 @@ export default function SimLoginScreen() {
   const showPhone  = login?.phoneEnabled ?? true
   const showEmail  = login?.emailEnabled ?? true
   const both       = showPhone && showEmail
+  const showPin    = login?.pinRequired ?? true
   const [tab, setTab] = useState('phone')  // solo importa cuando both === true
 
   const placeholder = both
@@ -20,7 +21,11 @@ export default function SimLoginScreen() {
       {/* Logo */}
       <div className="sim-logo">
         {branding.logoPreviewUrl ? (
-          <img src={branding.logoPreviewUrl} alt="logo" />
+          <img
+            src={branding.logoPreviewUrl}
+            alt="logo"
+            style={{ objectFit: 'cover', objectPosition: branding.logoPosition ?? '50% 50%' }}
+          />
         ) : (
           <div className="sim-logo-placeholder">{initial}</div>
         )}
@@ -74,6 +79,24 @@ export default function SimLoginScreen() {
         )}
 
         <div className="sim-btn-primary">{i18n.loginButton}</div>
+
+        {/* Campo de PIN — solo si pinRequired */}
+        {showPin && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+              {Array.from({ length: login?.pinLength ?? 4 }).map((_, i) => (
+                <div key={i} style={{
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: 'var(--sim-border)',
+                  border: '1px solid var(--sim-border)',
+                }} />
+              ))}
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 4, fontSize: 7, color: 'var(--sim-text-secondary)' }}>
+              PIN de seguridad
+            </div>
+          </div>
+        )}
       </div>
 
       {both && (

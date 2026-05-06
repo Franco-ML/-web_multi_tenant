@@ -1,14 +1,18 @@
-import { useState } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { useState, useCallback, useEffect } from 'react'
+import { Outlet, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, CheckCircle, AlertCircle, Loader, X, Rocket, Check, Sun, Moon, CloudOff, Cloud } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Loader, X, Rocket, Check, Sun, Moon, CloudOff, Cloud, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import Sidebar from './Sidebar'
 import PhoneSimulator from '../components/simulator/PhoneSimulator'
 import AnimatedBackground from '../components/background/AnimatedBackground'
+import OnboardingWizard from '../components/onboarding/OnboardingWizard'
 import { useCssVariables } from '../hooks/useCssVariables'
 import { useSaveToServer } from '../hooks/useSaveToServer'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { useTenantStore } from '../store/useTenantStore'
+import { useAuthStore } from '../store/useAuthStore'
+import { useUserRole } from '../hooks/useUserRole'
+import { useTenantManager } from '../hooks/useTenantManager'
 import FlagImage from '../components/ui/FlagImage'
 
 // ─── Modal de confirmación ─────────────────────────────────────────────────────
@@ -435,7 +439,58 @@ function PublishButton() {
 
 export default function DashboardLayout() {
   useCssVariables()
-  const location = useLocation()
+  const location      = useLocation()
+  const navigate      = useNavigate()
+  const setupComplete   = useTenantStore((s) => s.advanced._setupComplete === true)
+  const tenantCode      = useTenantStore((s) => s.advanced.tenantCode)
+  const countryConfigs  = useTenantStore((s) => s.countryConfigs)
+  const setActiveCountry = useTenantStore((s) => s.setActiveCountry)
+  const systemSimOpen   = useTenantStore((s) => s.systemSimOpen)
+  const user          = useAuthStore((s) => s.user)
+  const { isSystem, isCountryAdmin, isSuperTenant, assignedCountries } = useUserRole()
+  const { switchTenant } = useTenantManager()
+
+  const showSim = !isSystem || systemSimOpen
+
+  const [simOpen, setSimOpen] = useState(
+    () => localStorage.getItem('sim-panel-open') !== 'false'
+  )
+  const toggleSim = useCallback(() => {
+    setSimOpen(v => {
+      localStorage.setItem('sim-panel-open', String(!v))
+      return !v
+    })
+  }, [])
+
+  // L10: si el store no tiene el tenant del usuario cargado, auto-switch al primero
+  useEffect(() => {
+    if (!isSuperTenant || !user) return
+    const assignedCode = user.tenants?.[0]?.tenant_code
+    if (!assignedCode) return
+    if (tenantCode === assignedCode) return   // ya cargado
+    switchTenant(assignedCode)
+  }, [isSuperTenant, user?.id]) // eslint-disable-line
+
+  // L11: fijar su país automáticamente y redirigir al detalle
+  useEffect(() => {
+    if (!isCountryAdmin || !setupComplete) return
+    if (assignedCountries.length === 0) return
+    const code = assignedCountries[0]
+    const c = countryConfigs.find(x => x.countryCode === code)
+    if (!c) return
+    setActiveCountry(code)
+    if (!location.pathname.startsWith(`/countries/${c.id}`)) {
+      navigate(`/countries/${c.id}`, { replace: true })
+    }
+  }, [isCountryAdmin, setupComplete]) // eslint-disable-line
+
+  // Guard: sin sesión → /login
+  if (!user) return <Navigate to="/login" replace />
+
+  // Wizard de primera configuración: se muestra cuando hay tenantCode pero no hay setup completo
+  if (tenantCode && !setupComplete) {
+    return <OnboardingWizard />
+  }
 
   return (
     <div style={{
@@ -472,60 +527,92 @@ export default function DashboardLayout() {
         </motion.div>
       </main>
 
-      {/* Simulator panel */}
-      <aside style={{
-        width: 360,
-        flexShrink: 0,
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(13,16,23,0.8)',
-        backdropFilter: 'blur(20px)',
-        borderLeft: '1px solid rgba(255,255,255,0.06)',
-        position: 'sticky',
-        top: 0,
-        right: 0,
-        zIndex: 10,
-        padding: '20px 0 0',
-      }}>
-        {/* Panel header */}
-        <div style={{
-          position: 'absolute',
-          top: 0, left: 0, right: 0,
-          padding: '10px 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: '#E8175D',
-              boxShadow: '0 0 8px rgba(232,23,93,0.6)',
-            }} />
-            <span style={{
-              fontSize: 11, fontWeight: 700,
-              color: 'rgba(255,255,255,0.6)',
-              fontFamily: 'Space Mono, monospace',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-            }}>
-              Vista previa
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <AutoSaveIndicator />
-            <PublishButton />
-          </div>
-        </div>
+      {/* Simulator panel — colapsable; oculto para admins de sistema sin preview activa */}
+      <div style={{ position: 'relative', flexShrink: 0, height: '100vh', display: showSim ? undefined : 'none' }}>
 
-        <div style={{ paddingTop: 52 }}>
-          <PhoneSimulator />
-        </div>
-      </aside>
+        {/* Lengüeta de toggle — siempre visible, sobresale hacia la izquierda */}
+        <motion.button
+          onClick={toggleSim}
+          title={simOpen ? 'Ocultar preview' : 'Mostrar preview'}
+          animate={{ left: simOpen ? -14 : -44 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+          style={{
+            position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+            zIndex: 20, cursor: 'pointer',
+            width: 44, height: 80,
+            background: 'linear-gradient(135deg, #E8175D, #c0134d)',
+            border: 'none',
+            borderRadius: '10px 0 0 10px',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 6,
+            boxShadow: '-4px 0 20px rgba(232,23,93,0.35)',
+            transition: 'box-shadow 0.2s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.boxShadow = '-4px 0 28px rgba(232,23,93,0.55)'}
+          onMouseLeave={e => e.currentTarget.style.boxShadow = '-4px 0 20px rgba(232,23,93,0.35)'}
+        >
+          <motion.div animate={{ rotate: simOpen ? 0 : 180 }} transition={{ duration: 0.25 }}>
+            {simOpen
+              ? <PanelRightClose size={16} color="#fff" />
+              : <PanelRightOpen  size={16} color="#fff" />}
+          </motion.div>
+          <span style={{
+            fontSize: 7, fontWeight: 800, color: 'rgba(255,255,255,0.85)',
+            fontFamily: 'Space Mono', letterSpacing: '0.06em', textTransform: 'uppercase',
+            writingMode: 'vertical-rl', transform: 'rotate(180deg)',
+          }}>
+            Preview
+          </span>
+        </motion.button>
+
+        {/* Panel */}
+        <motion.aside
+          animate={{ width: simOpen ? 360 : 0 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+          style={{
+            height: '100vh',
+            display: 'flex', flexDirection: 'column',
+            background: 'rgba(13,16,23,0.8)',
+            backdropFilter: 'blur(20px)',
+            borderLeft: '1px solid rgba(255,255,255,0.06)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Header */}
+          <div style={{
+            flexShrink: 0, minWidth: 360,
+            padding: '10px 16px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: '#E8175D', boxShadow: '0 0 8px rgba(232,23,93,0.6)',
+              }} />
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)',
+                fontFamily: 'Space Mono, monospace', letterSpacing: '0.06em', textTransform: 'uppercase',
+              }}>
+                Vista previa
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <AutoSaveIndicator />
+              <PublishButton />
+            </div>
+          </div>
+
+          {/* Simulador */}
+          <div style={{
+            flex: 1, minWidth: 360,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px 0',
+          }}>
+            <PhoneSimulator />
+          </div>
+        </motion.aside>
+      </div>
     </div>
   )
 }

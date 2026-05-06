@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FileText, ChevronDown, Check, Minus, Circle, ArrowUp, Loader, Lock, ScanLine } from 'lucide-react'
+import {
+  FileText, Check, Minus, Circle, ArrowUp, Loader, ScanLine,
+  ChevronDown, Lock, Sparkles, AlertCircle, ChevronRight,
+  ToggleLeft, ToggleRight, Globe2,
+} from 'lucide-react'
 import { useTenantStore } from '../store/useTenantStore'
 import { apiFetch } from '../lib/api'
 import PageHeader from '../components/ui/PageHeader'
@@ -23,214 +27,458 @@ function getBaseDocuments(registrationSteps) {
   return docs
 }
 
-function isDocEnabled(docs, templateCode) {
-  if (!docs) return null  // inherited
-  return docs.find(d => (d.templateCode ?? d.ocr?.documentType ?? d.key) === templateCode) ?? null
+function docState(doc) {
+  if (!doc) return 'off'
+  return doc.required !== false ? 'required' : 'optional'
 }
 
 function cycleState(current) {
-  if (!current)                    return 'optional'
-  if (current.required === false)  return 'required'
-  return null  // disabled
+  if (!current)                   return 'optional'
+  if (current.required === false) return 'required'
+  return null  // → desactivar
 }
 
-// ─── Cell ─────────────────────────────────────────────────────────────────────
+// ─── Vista de un solo país ────────────────────────────────────────────────────
 
-function DocCell({ doc, templateCode, editable, onToggle, onToggleOcr }) {
-  if (!editable) {
-    // inherited
-    return (
-      <td style={cellStyle('inherit')}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-          <ArrowUp size={10} color="rgba(255,255,255,0.2)" />
-          <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', fontFamily: 'Space Mono, monospace' }}>base</span>
-        </div>
-      </td>
-    )
-  }
-
-  if (!doc) {
-    return (
-      <td style={cellStyle('disabled')}>
-        <button onClick={() => onToggle(templateCode, null)} style={cellBtnStyle}>
-          <Minus size={11} color="rgba(255,255,255,0.2)" />
-        </button>
-      </td>
-    )
-  }
-
-  const isRequired = doc.required !== false
-  const ocrOn      = doc.ocr_enabled !== false
-
-  return (
-    <td style={cellStyle(isRequired ? 'required' : 'optional')}>
-      <button onClick={() => onToggle(templateCode, doc)} style={cellBtnStyle}>
-        {isRequired
-          ? <Check size={11} color="rgba(52,199,89,0.9)" />
-          : <Circle size={11} color="rgba(99,179,237,0.8)" />
-        }
-        <span style={{
-          fontSize: 8,
-          color: isRequired ? 'rgba(52,199,89,0.8)' : 'rgba(99,179,237,0.7)',
-          fontFamily: 'Space Mono, monospace',
-        }}>
-          {isRequired ? 'req' : 'opc'}
-        </span>
-      </button>
-      <button
-        onClick={e => { e.stopPropagation(); onToggleOcr(templateCode, doc, ocrOn) }}
-        title={ocrOn ? 'OCR activo' : 'OCR desactivado'}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 3,
-          padding: '2px 5px', borderRadius: 4, border: 'none',
-          background: 'transparent', cursor: 'pointer', marginTop: 2,
-        }}
-      >
-        <ScanLine size={8} color={ocrOn ? 'rgba(52,199,89,0.7)' : 'rgba(255,255,255,0.2)'} />
-        <span style={{
-          fontSize: 7, color: ocrOn ? 'rgba(52,199,89,0.7)' : 'rgba(255,255,255,0.2)',
-          fontFamily: 'Space Mono, monospace',
-        }}>
-          OCR
-        </span>
-        <div style={{
-          width: 4, height: 4, borderRadius: '50%',
-          background: ocrOn ? 'rgba(52,199,89,0.8)' : 'rgba(255,255,255,0.15)',
-        }} />
-      </button>
-    </td>
-  )
-}
-
-const cellBtnStyle = {
-  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-  background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 6px',
-  borderRadius: 5, width: '100%',
-}
-
-function cellStyle(variant) {
-  const base = {
-    padding: '8px 6px', minWidth: 90, textAlign: 'center',
-    borderBottom: '1px solid rgba(255,255,255,0.04)',
-    borderRight: '1px solid rgba(255,255,255,0.04)',
-    transition: 'background 0.12s ease',
-  }
-  if (variant === 'required') return { ...base, background: 'rgba(52,199,89,0.05)' }
-  if (variant === 'optional') return { ...base, background: 'rgba(99,179,237,0.05)' }
-  if (variant === 'inherit')  return { ...base, background: 'rgba(255,255,255,0.01)' }
-  return { ...base, background: 'rgba(255,255,255,0.01)' }
-}
-
-// ─── InheritancePicker ────────────────────────────────────────────────────────
-
-function InheritancePicker({ country, allCountries, onChangeMode }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+function SingleCountryDocs({ country, templates, baseDocs, loading }) {
+  const navigate          = useNavigate()
+  const setCountryDocs    = useTenantStore(s => s.setCountryDocuments)
+  const setCountryIdTypes = useTenantStore(s => s.setCountryIdTypes)
 
   const hasOwn = country.documents !== null && country.documents !== undefined
-  const label = hasOwn ? 'Config propia' : 'Hereda base'
 
-  const others = allCountries.filter(c => c.countryCode !== country.countryCode && c.status === 'active')
+  function activateCustom() {
+    // Inicializar con los templates base como punto de partida
+    const initial = templates.map(t => {
+      const base = baseDocs.find(d => (d.templateCode ?? d.ocr?.documentType ?? d.key) === t.code)
+      return {
+        key:         t.code,
+        templateCode: t.code,
+        label:       t.code,
+        required:    base ? base.required !== false : false,
+        ocr_enabled: true,
+      }
+    })
+    setCountryDocs(country.countryCode, initial)
+  }
+
+  function resetToBase() {
+    setCountryDocs(country.countryCode, null)
+  }
+
+  function toggleDoc(templateCode) {
+    const docs = [...(country.documents ?? [])]
+    const idx  = docs.findIndex(d => (d.templateCode ?? d.key) === templateCode)
+    const curr = idx >= 0 ? docs[idx] : null
+    const next = cycleState(curr)
+
+    if (!next) {
+      setCountryDocs(country.countryCode, docs.filter((_, i) => i !== idx))
+      return
+    }
+    const entry = { key: templateCode, templateCode, label: templateCode, required: next === 'required', ocr_enabled: curr?.ocr_enabled ?? true }
+    if (idx >= 0) {
+      docs[idx] = { ...docs[idx], required: entry.required }
+    } else {
+      docs.push(entry)
+    }
+    setCountryDocs(country.countryCode, docs)
+  }
+
+  function toggleOcr(templateCode) {
+    const docs = (country.documents ?? []).map(d =>
+      (d.templateCode ?? d.key) === templateCode ? { ...d, ocr_enabled: !d.ocr_enabled } : d
+    )
+    setCountryDocs(country.countryCode, docs)
+  }
+
+  if (loading) return <LoadingState />
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          padding: '3px 7px', borderRadius: 5,
-          background: hasOwn ? 'rgba(232,23,93,0.12)' : 'rgba(255,255,255,0.06)',
-          border: hasOwn ? '1px solid rgba(232,23,93,0.3)' : '1px solid rgba(255,255,255,0.1)',
-          color: hasOwn ? 'rgba(232,23,93,0.9)' : 'rgba(255,255,255,0.5)',
-          fontSize: 8, fontFamily: 'Space Mono, monospace', cursor: 'pointer',
-        }}
-      >
-        {hasOwn ? <Lock size={7} /> : <ArrowUp size={7} />}
-        {label}
-        <ChevronDown size={7} />
-      </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.1 }}
+      {/* Banner de modo */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 18px', borderRadius: 12,
+        background: hasOwn ? 'rgba(232,23,93,0.07)' : 'rgba(255,255,255,0.03)',
+        border: hasOwn ? '1px solid rgba(232,23,93,0.25)' : '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 9,
+            background: hasOwn ? 'rgba(232,23,93,0.12)' : 'rgba(255,255,255,0.05)',
+            border: hasOwn ? '1px solid rgba(232,23,93,0.25)' : '1px solid rgba(255,255,255,0.08)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {hasOwn ? <Sparkles size={14} color="#E8175D" /> : <ArrowUp size={14} color="rgba(255,255,255,0.4)" />}
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: hasOwn ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.6)', fontFamily: 'Sora' }}>
+              {hasOwn ? 'Configuración propia' : 'Usando configuración base'}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono', marginTop: 1 }}>
+              {hasOwn
+                ? `${country.documents.length} tipos de documento configurados`
+                : 'Los documentos se toman de la configuración global del tenant'}
+            </div>
+          </div>
+        </div>
+        {hasOwn ? (
+          <button
+            onClick={resetToBase}
             style={{
-              position: 'absolute', top: '110%', left: 0, zIndex: 200,
-              background: 'rgba(18,21,30,0.98)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8, minWidth: 170,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-              overflow: 'hidden',
+              padding: '6px 12px', borderRadius: 7, cursor: 'pointer',
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.4)', fontSize: 10, fontFamily: 'Sora', fontWeight: 600,
             }}
           >
-            <PickerOption label="Hereda base" sub="sin override" active={!hasOwn} onClick={() => { onChangeMode('inherit-base'); setOpen(false) }} />
-            {others.map(o => (
-              <PickerOption
-                key={o.countryCode}
-                label={`Hereda de ${o.name ?? o.countryCode}`}
-                sub={o.countryCode}
-                active={false}
-                onClick={() => { onChangeMode('inherit-from', o); setOpen(false) }}
-                flag={o.countryCode}
-              />
-            ))}
-            <PickerOption label="Config propia" sub="override por documento" active={hasOwn} onClick={() => { onChangeMode('own'); setOpen(false) }} accent />
-          </motion.div>
+            Restaurar base
+          </button>
+        ) : (
+          <button
+            onClick={activateCustom}
+            style={{
+              padding: '7px 14px', borderRadius: 7, cursor: 'pointer',
+              background: '#E8175D', border: 'none',
+              color: '#fff', fontSize: 11, fontFamily: 'Sora', fontWeight: 700,
+              boxShadow: '0 3px 12px rgba(232,23,93,0.3)',
+            }}
+          >
+            Personalizar documentos
+          </button>
         )}
-      </AnimatePresence>
+      </div>
+
+      {/* Lista de templates */}
+      {templates.length === 0 ? (
+        <div style={{
+          padding: '32px 20px', textAlign: 'center',
+          background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 12,
+        }}>
+          <AlertCircle size={22} color="rgba(255,255,255,0.2)" style={{ marginBottom: 8 }} />
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'Sora' }}>
+            No hay templates de documentos disponibles
+          </div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', fontFamily: 'Space Mono', marginTop: 4 }}>
+            El servidor OCR no devolvió templates
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {templates.map(t => {
+            const baseDoc = baseDocs.find(d => (d.templateCode ?? d.ocr?.documentType ?? d.key) === t.code)
+            const customDoc = hasOwn ? (country.documents ?? []).find(d => (d.templateCode ?? d.key) === t.code) : undefined
+            const effectiveDoc = hasOwn ? customDoc : baseDoc
+            const state = docState(effectiveDoc)
+            const ocrOn = effectiveDoc?.ocr_enabled !== false
+
+            const isCustomized = hasOwn && (
+              (customDoc === undefined && baseDoc !== undefined) ||
+              (customDoc !== undefined && baseDoc === undefined) ||
+              (customDoc !== undefined && baseDoc !== undefined && customDoc.required !== baseDoc.required)
+            )
+
+            return (
+              <div
+                key={t.code}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 16px', borderRadius: 11,
+                  background: state === 'required' ? 'rgba(16,185,129,0.05)'
+                    : state === 'optional' ? 'rgba(99,179,237,0.04)'
+                    : 'rgba(255,255,255,0.02)',
+                  border: state === 'required' ? '1px solid rgba(16,185,129,0.18)'
+                    : state === 'optional' ? '1px solid rgba(99,179,237,0.15)'
+                    : '1px solid rgba(255,255,255,0.06)',
+                  transition: 'all 0.12s',
+                }}
+              >
+                {/* Icono estado */}
+                <div style={{
+                  width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: state === 'required' ? 'rgba(16,185,129,0.12)'
+                    : state === 'optional' ? 'rgba(99,179,237,0.1)'
+                    : 'rgba(255,255,255,0.04)',
+                  border: state === 'required' ? '1px solid rgba(16,185,129,0.25)'
+                    : state === 'optional' ? '1px solid rgba(99,179,237,0.2)'
+                    : '1px solid rgba(255,255,255,0.07)',
+                }}>
+                  {state === 'required' && <Check size={14} color="#10B981" />}
+                  {state === 'optional' && <Circle size={14} color="#63B3ED" />}
+                  {state === 'off'      && <Minus  size={14} color="rgba(255,255,255,0.2)" />}
+                </div>
+
+                {/* Info del template */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora' }}>
+                      {t.code}
+                    </span>
+                    {isCustomized && (
+                      <span style={{
+                        fontSize: 7, padding: '1px 5px', borderRadius: 3,
+                        background: 'rgba(232,23,93,0.1)', border: '1px solid rgba(232,23,93,0.25)',
+                        color: '#E8175D', fontFamily: 'Space Mono', letterSpacing: '0.05em',
+                      }}>MODIFICADO</span>
+                    )}
+                    {!hasOwn && baseDoc === undefined && (
+                      <span style={{
+                        fontSize: 7, padding: '1px 5px', borderRadius: 3,
+                        background: 'rgba(255,255,255,0.05)',
+                        color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono',
+                      }}>no en base</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono', marginTop: 2 }}>
+                    {t.fields?.length ?? 0} campo{(t.fields?.length ?? 0) !== 1 ? 's' : ''} · OCR Gemini
+                    {!hasOwn && <span style={{ color: 'rgba(255,255,255,0.2)' }}> · heredado de base</span>}
+                  </div>
+                </div>
+
+                {/* Estado badge */}
+                <div style={{ fontSize: 9, fontFamily: 'Space Mono', fontWeight: 700, minWidth: 48, textAlign: 'center' }}>
+                  {state === 'required' && <span style={{ color: '#10B981' }}>REQUERIDO</span>}
+                  {state === 'optional' && <span style={{ color: '#63B3ED' }}>OPCIONAL</span>}
+                  {state === 'off'      && <span style={{ color: 'rgba(255,255,255,0.2)' }}>DESACT.</span>}
+                </div>
+
+                {/* OCR toggle — solo si está activo el doc */}
+                {state !== 'off' && (
+                  <button
+                    disabled={!hasOwn}
+                    onClick={() => hasOwn && toggleOcr(t.code)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      padding: '4px 9px', borderRadius: 6,
+                      background: ocrOn ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.03)',
+                      border: ocrOn ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.07)',
+                      cursor: hasOwn ? 'pointer' : 'default',
+                      opacity: hasOwn ? 1 : 0.5,
+                    }}
+                    title={hasOwn ? (ocrOn ? 'Desactivar OCR' : 'Activar OCR') : 'Activa config propia para editar'}
+                  >
+                    <ScanLine size={10} color={ocrOn ? '#10B981' : 'rgba(255,255,255,0.25)'} />
+                    <span style={{ fontSize: 9, fontFamily: 'Space Mono', color: ocrOn ? '#10B981' : 'rgba(255,255,255,0.25)' }}>
+                      OCR
+                    </span>
+                    {ocrOn
+                      ? <ToggleRight size={13} color="#10B981" />
+                      : <ToggleLeft  size={13} color="rgba(255,255,255,0.2)" />
+                    }
+                  </button>
+                )}
+
+                {/* Ciclar estado — solo en config propia */}
+                {hasOwn ? (
+                  <button
+                    onClick={() => toggleDoc(t.code)}
+                    style={{
+                      width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                      cursor: 'pointer',
+                    }}
+                    title="Cambiar estado: requerido → opcional → desactivado"
+                  >
+                    <ChevronRight size={12} color="rgba(255,255,255,0.4)" />
+                  </button>
+                ) : (
+                  <div style={{ width: 28, flexShrink: 0 }} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Nota OCR */}
+      {templates.length > 0 && (
+        <div style={{
+          padding: '10px 14px', borderRadius: 9,
+          background: 'rgba(99,179,237,0.04)', border: '1px solid rgba(99,179,237,0.1)',
+          display: 'flex', gap: 9, alignItems: 'flex-start',
+        }}>
+          <ScanLine size={12} color="rgba(99,179,237,0.55)" style={{ flexShrink: 0, marginTop: 1 }} />
+          <span style={{ fontSize: 9, color: 'rgba(99,179,237,0.6)', fontFamily: 'Space Mono', lineHeight: 1.6 }}>
+            <strong style={{ color: 'rgba(99,179,237,0.8)' }}>OCR via Gemini 1.5 Flash.</strong>
+            {' '}Actívalo por documento para que la app mobile extraiga los campos automáticamente al fotografiar el documento.
+          </span>
+        </div>
+      )}
     </div>
   )
 }
 
-function PickerOption({ label, sub, active, onClick, accent, flag }) {
+// ─── Vista matriz (L10 sin país activo) ───────────────────────────────────────
+
+function MatrixView({ countryConfigs, templates, baseDocs, loading }) {
+  const navigate          = useNavigate()
+  const setCountryDocs    = useTenantStore(s => s.setCountryDocuments)
+  const regSteps          = useTenantStore(s => s.registration?.steps ?? [])
+
+  function handleToggle(countryCode, templateCode, currentDoc) {
+    const country = countryConfigs.find(c => c.countryCode === countryCode)
+    if (!country || country.documents === null) return
+    const docs = [...(country.documents ?? [])]
+    const idx  = docs.findIndex(d => (d.templateCode ?? d.ocr?.documentType ?? d.key) === templateCode)
+    const next = cycleState(currentDoc)
+    if (!next) {
+      setCountryDocs(countryCode, docs.filter((_, i) => i !== idx)); return
+    }
+    const template = templates.find(t => t.code === templateCode)
+    const entry = { key: templateCode, templateCode, label: template?.code ?? templateCode, required: next === 'required', ocr_enabled: true }
+    if (idx >= 0) docs[idx] = { ...docs[idx], required: entry.required }
+    else docs.push(entry)
+    setCountryDocs(countryCode, docs)
+  }
+
+  function handleChangeMode(countryCode, mode) {
+    if (mode === 'inherit-base') {
+      setCountryDocs(countryCode, null)
+    } else {
+      const country = countryConfigs.find(c => c.countryCode === countryCode)
+      if (country?.documents !== null && country?.documents !== undefined) return
+      const initial = baseDocs.map(d => ({
+        key: d.templateCode ?? d.ocr?.documentType ?? d.key,
+        templateCode: d.templateCode ?? d.ocr?.documentType ?? d.key,
+        label: d.label ?? d.key,
+        required: d.required !== false,
+        ocr_enabled: d.ocr?.autofill !== false,
+      }))
+      setCountryDocs(countryCode, initial.length ? initial : [])
+    }
+  }
+
+  if (loading) return <LoadingState />
+
   return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        width: '100%', padding: '8px 12px', border: 'none',
-        background: active ? 'rgba(232,23,93,0.1)' : 'transparent',
-        cursor: 'pointer', textAlign: 'left',
-      }}
-      onMouseEnter={e => e.currentTarget.style.background = active ? 'rgba(232,23,93,0.15)' : 'rgba(255,255,255,0.05)'}
-      onMouseLeave={e => e.currentTarget.style.background = active ? 'rgba(232,23,93,0.1)' : 'transparent'}
-    >
-      {flag && (
-        <div style={{ width: 16, height: 12, borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
-          <FlagImage code={flag} size={16} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>
-      )}
-      <div>
-        <div style={{ fontSize: 10, fontWeight: 600, color: accent ? '#E8175D' : 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif' }}>
-          {label}
-        </div>
-        <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', fontFamily: 'Space Mono, monospace' }}>{sub}</div>
+    <div>
+      {/* Hint para ir al editor por país */}
+      <div style={{
+        marginBottom: 14, padding: '9px 14px', borderRadius: 9,
+        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+        display: 'flex', alignItems: 'center', gap: 9, fontSize: 10,
+        color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono',
+      }}>
+        <Globe2 size={12} color="rgba(255,255,255,0.3)" />
+        Selecciona un país en el menú lateral para ver y editar su configuración de documentos en detalle.
       </div>
-      {active && <Check size={10} color="#E8175D" style={{ marginLeft: 'auto' }} />}
-    </button>
+
+      <div style={{
+        overflowX: 'auto',
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 12,
+      }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+          <thead>
+            <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <th style={thStickyStyle}><span style={thTextStyle}>País</span></th>
+              {templates.map(t => (
+                <th key={t.code} style={thStyle}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    <span style={thTextStyle}>{t.code}</span>
+                    <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.2)', fontFamily: 'Space Mono' }}>{t.fields?.length ?? 0}c</span>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {countryConfigs.map(country => {
+              const hasOwn = country.documents !== null && country.documents !== undefined
+              return (
+                <tr key={country.countryCode}
+                  style={{ cursor: 'pointer', transition: 'background 0.1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.015)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <td style={tdStickyStyle}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <div style={{ width: 22, height: 16, borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}>
+                          <FlagImage code={country.countryCode} size={22} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora' }}>
+                            {country.name ?? country.countryCode}
+                          </div>
+                          <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono' }}>
+                            {country.countryCode}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => navigate(`/countries/${country.id}`)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          padding: '2px 7px', borderRadius: 4,
+                          background: hasOwn ? 'rgba(232,23,93,0.1)' : 'rgba(255,255,255,0.05)',
+                          border: hasOwn ? '1px solid rgba(232,23,93,0.25)' : '1px solid rgba(255,255,255,0.09)',
+                          color: hasOwn ? '#E8175D' : 'rgba(255,255,255,0.4)',
+                          fontSize: 8, fontFamily: 'Space Mono', cursor: 'pointer',
+                        }}
+                      >
+                        {hasOwn ? <Lock size={7} /> : <ArrowUp size={7} />}
+                        {hasOwn ? 'Propio' : 'Hereda base'}
+                        <ChevronRight size={7} />
+                      </button>
+                    </div>
+                  </td>
+                  {templates.map(t => {
+                    if (!hasOwn) {
+                      const baseDoc = baseDocs.find(d => (d.templateCode ?? d.ocr?.documentType ?? d.key) === t.code)
+                      return (
+                        <td key={t.code} style={cellStyle('inherit')}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                            {baseDoc
+                              ? <ArrowUp size={9} color="rgba(255,255,255,0.2)" />
+                              : <Minus size={9} color="rgba(255,255,255,0.1)" />}
+                            <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.2)', fontFamily: 'Space Mono' }}>base</span>
+                          </div>
+                        </td>
+                      )
+                    }
+                    const doc = (country.documents ?? []).find(d => (d.templateCode ?? d.key) === t.code)
+                    const state = docState(doc)
+                    return (
+                      <td key={t.code} style={cellStyle(state === 'required' ? 'required' : state === 'optional' ? 'optional' : 'disabled')}>
+                        <button
+                          onClick={() => handleToggle(country.countryCode, t.code, doc ?? null)}
+                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 5, width: '100%' }}
+                        >
+                          {state === 'required' && <><Check size={10} color="rgba(52,199,89,0.9)" /><span style={{ fontSize: 7, color: 'rgba(52,199,89,0.8)', fontFamily: 'Space Mono' }}>req</span></>}
+                          {state === 'optional' && <><Circle size={10} color="rgba(99,179,237,0.8)" /><span style={{ fontSize: 7, color: 'rgba(99,179,237,0.7)', fontFamily: 'Space Mono' }}>opc</span></>}
+                          {state === 'off'      && <Minus size={10} color="rgba(255,255,255,0.2)" />}
+                        </button>
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
-  const tenantCode       = useTenantStore(s => s.advanced.tenantCode)
-  const setupComplete    = useTenantStore(s => s.advanced._setupComplete === true)
-  const countryConfigs   = useTenantStore(s => s.countryConfigs)
-  const regSteps         = useTenantStore(s => s.registration?.steps ?? [])
-  const setCountryDocs   = useTenantStore(s => s.setCountryDocuments)
+  const tenantCode     = useTenantStore(s => s.advanced.tenantCode)
+  const setupComplete  = useTenantStore(s => s.advanced._setupComplete === true)
+  const countryConfigs = useTenantStore(s => s.countryConfigs)
+  const activeCountry  = useTenantStore(s => s.activeCountry)
+  const regSteps       = useTenantStore(s => s.registration?.steps ?? [])
 
   const [templates, setTemplates] = useState([])
   const [loading,   setLoading]   = useState(true)
 
-  if (!tenantCode)    return <Navigate to="/branding" replace />
+  if (!tenantCode)    return <Navigate to="/brand" replace />
   if (!setupComplete) return <Navigate to="/setup" replace />
 
   useEffect(() => {
@@ -242,281 +490,112 @@ export default function DocumentsPage() {
   }, [])
 
   const baseDocs   = getBaseDocuments(regSteps)
-  const withOwn    = countryConfigs.filter(c => c.documents !== null && c.documents !== undefined).length
-  const inheriting = countryConfigs.length - withOwn
+  const activeConf = activeCountry ? countryConfigs.find(c => c.countryCode === activeCountry) : null
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // ── Título dinámico ────────────────────────────────────────────────────────
 
-  function handleToggle(countryCode, templateCode, currentDoc) {
-    const country = countryConfigs.find(c => c.countryCode === countryCode)
-    if (!country || country.documents === null) return
-
-    const docs    = [...(country.documents ?? [])]
-    const idx     = docs.findIndex(d => (d.templateCode ?? d.ocr?.documentType ?? d.key) === templateCode)
-    const nextState = cycleState(currentDoc)
-
-    if (!nextState) {
-      // disabled → remove
-      const updated = docs.filter((_, i) => i !== idx)
-      setCountryDocs(countryCode, updated)
-      return
-    }
-
-    const template = templates.find(t => t.code === templateCode)
-    const entry = {
-      key:          templateCode,
-      templateCode,
-      label:        template?.code ?? templateCode,
-      required:     nextState === 'required',
-      ocr_enabled:  true,
-    }
-
-    if (idx >= 0) {
-      docs[idx] = { ...docs[idx], required: entry.required }
-    } else {
-      docs.push(entry)
-    }
-    setCountryDocs(countryCode, docs)
-  }
-
-  function handleToggleOcr(countryCode, templateCode, currentDoc, ocrOn) {
-    const country = countryConfigs.find(c => c.countryCode === countryCode)
-    if (!country || country.documents === null) return
-    const docs = (country.documents ?? []).map(d =>
-      (d.templateCode ?? d.ocr?.documentType ?? d.key) === templateCode
-        ? { ...d, ocr_enabled: !ocrOn }
-        : d
-    )
-    setCountryDocs(countryCode, docs)
-  }
-
-  function handleChangeMode(countryCode, mode, sourceCountry) {
-    if (mode === 'inherit-base' || mode === 'inherit-from') {
-      setCountryDocs(countryCode, null)
-    } else {
-      // own: copiar docs base como punto de partida
-      const country = countryConfigs.find(c => c.countryCode === countryCode)
-      const existing = country?.documents
-      if (existing !== null && existing !== undefined) return  // ya tiene
-      const initial = baseDocs.map(d => ({
-        key:          d.templateCode ?? d.ocr?.documentType ?? d.key,
-        templateCode: d.templateCode ?? d.ocr?.documentType ?? d.key,
-        label:        d.label ?? d.key,
-        required:     d.required !== false,
-        ocr_enabled:  d.ocr?.autofill !== false,
-      }))
-      setCountryDocs(countryCode, initial.length ? initial : [])
-    }
-  }
-
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const title    = activeConf ? `Documentos · ${activeConf.name ?? activeConf.countryCode}` : 'Documentos y validación'
+  const subtitle = activeConf
+    ? 'Configura qué documentos y OCR aplican a este país'
+    : 'Vista general de documentos por país. Selecciona un país para editar en detalle.'
 
   return (
     <div>
-      <PageHeader
-        title="Documentos y OCR"
-        subtitle="Configura qué documentos requiere cada país y qué campos extrae el OCR."
-        icon={FileText}
-      />
+      <PageHeader title={title} subtitle={subtitle} icon={FileText} />
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
-        <Stat label="Templates OCR" value={loading ? '…' : templates.length} />
-        <Stat label="Países con config propia" value={withOwn} accent="#E8175D" />
-        <Stat label="Heredando base" value={inheriting} />
-      </div>
-
-      {countryConfigs.length === 0 ? (
-        <Empty />
-      ) : loading ? (
-        <LoadingState />
-      ) : (
+      {/* Header de país activo */}
+      {activeConf && (
         <div style={{
-          overflowX: 'auto',
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid rgba(255,255,255,0.07)',
-          borderRadius: 12,
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18,
+          padding: '10px 14px', borderRadius: 10,
+          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
         }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-                {/* Columna país */}
-                <th style={thStickyStyle}>
-                  <span style={thTextStyle}>País</span>
-                </th>
-                {templates.map(t => (
-                  <th key={t.code} style={thStyle}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                      <span style={thTextStyle}>{t.code}</span>
-                      <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.25)', fontFamily: 'Space Mono, monospace' }}>
-                        {t.fields.length} campos
-                      </span>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {/* Fila BASE */}
-              <tr style={{ background: 'rgba(255,255,255,0.015)' }}>
-                <td style={tdStickyStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{
-                      padding: '2px 6px', borderRadius: 4,
-                      background: 'rgba(255,255,255,0.08)',
-                      fontSize: 8, fontFamily: 'Space Mono, monospace',
-                      fontWeight: 700, color: 'rgba(255,255,255,0.5)',
-                      letterSpacing: '0.06em',
-                    }}>
-                      BASE
-                    </div>
-                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'Sora, sans-serif' }}>
-                      Config del tenant
-                    </span>
-                  </div>
-                </td>
-                {templates.map(t => {
-                  const doc = isDocEnabled(baseDocs, t.code)
-                  return (
-                    <td key={t.code} style={cellStyle(doc ? (doc.required !== false ? 'required' : 'optional') : 'disabled')}>
-                      {doc ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                          {doc.required !== false
-                            ? <Check size={11} color="rgba(52,199,89,0.7)" />
-                            : <Circle size={11} color="rgba(99,179,237,0.6)" />
-                          }
-                          <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace' }}>
-                            {doc.required !== false ? 'req' : 'opc'}
-                          </span>
-                        </div>
-                      ) : (
-                        <Minus size={10} color="rgba(255,255,255,0.15)" />
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-
-              {/* Filas de países */}
-              {countryConfigs.map(country => {
-                const hasOwn = country.documents !== null && country.documents !== undefined
-                return (
-                  <tr key={country.countryCode} style={{ transition: 'background 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.015)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    {/* Celda país */}
-                    <td style={tdStickyStyle}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <div style={{ width: 24, height: 17, borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}>
-                            <FlagImage code={country.countryCode} size={24} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif', lineHeight: 1.2 }}>
-                              {country.name ?? country.countryCode}
-                            </div>
-                            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace' }}>
-                              {country.countryCode}
-                            </div>
-                          </div>
-                        </div>
-                        <InheritancePicker
-                          country={country}
-                          allCountries={countryConfigs}
-                          onChangeMode={(mode, src) => handleChangeMode(country.countryCode, mode, src)}
-                        />
-                      </div>
-                    </td>
-
-                    {/* Celdas de documentos */}
-                    {templates.map(t => {
-                      if (!hasOwn) {
-                        return (
-                          <td key={t.code} style={cellStyle('inherit')}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                              <ArrowUp size={10} color="rgba(255,255,255,0.15)" />
-                              <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.2)', fontFamily: 'Space Mono, monospace' }}>base</span>
-                            </div>
-                          </td>
-                        )
-                      }
-                      const doc = isDocEnabled(country.documents, t.code)
-                      return (
-                        <DocCell
-                          key={t.code}
-                          doc={doc}
-                          templateCode={t.code}
-                          editable={true}
-                          onToggle={(code, currentDoc) => handleToggle(country.countryCode, code, currentDoc)}
-                          onToggleOcr={(code, currentDoc, ocrOn) => handleToggleOcr(country.countryCode, code, currentDoc, ocrOn)}
-                        />
-                      )
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div style={{ width: 28, height: 20, borderRadius: 4, overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}>
+            <FlagImage code={activeConf.countryCode} size={28} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora' }}>
+              {activeConf.name ?? activeConf.countryCode}
+            </span>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono', marginLeft: 8 }}>
+              {activeConf.countryCode}
+            </span>
+          </div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontFamily: 'Space Mono' }}>
+            {countryConfigs.length > 1 ? `${countryConfigs.length} países en el tenant` : '1 país en el tenant'}
+          </div>
         </div>
       )}
 
-      {/* Nota OCR */}
-      <div style={{
-        marginTop: 18, padding: '11px 14px',
-        background: 'rgba(99,179,237,0.04)',
-        border: '1px solid rgba(99,179,237,0.1)',
-        borderRadius: 10,
-        display: 'flex', gap: 10, alignItems: 'flex-start',
-      }}>
-        <ScanLine size={13} color="rgba(99,179,237,0.6)" style={{ flexShrink: 0, marginTop: 1 }} />
-        <div style={{ fontSize: 10, color: 'rgba(99,179,237,0.65)', fontFamily: 'Space Mono, monospace', lineHeight: 1.6 }}>
-          <strong style={{ color: 'rgba(99,179,237,0.85)' }}>OCR vía Gemini 1.5 Flash.</strong>
-          {' '}Cuando OCR está activo en un documento, la app mobile envía la foto a{' '}
-          <code style={{ background: 'rgba(99,179,237,0.08)', padding: '1px 4px', borderRadius: 3 }}>POST /ocr/extract</code>
-          {' '}y los campos extraídos se rellenan automáticamente en el formulario de registro.
+      {/* Sin países */}
+      {countryConfigs.length === 0 ? (
+        <div style={{
+          padding: '40px 20px', textAlign: 'center',
+          background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 12,
+        }}>
+          <FileText size={28} color="rgba(255,255,255,0.12)" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.5)', fontFamily: 'Sora', marginBottom: 4 }}>
+            Sin países configurados
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono' }}>
+            Configura países primero en la sección Países
+          </div>
         </div>
-      </div>
+      ) : activeConf ? (
+        <SingleCountryDocs
+          country={activeConf}
+          templates={templates}
+          baseDocs={baseDocs}
+          loading={loading}
+        />
+      ) : (
+        <MatrixView
+          countryConfigs={countryConfigs}
+          templates={templates}
+          baseDocs={baseDocs}
+          loading={loading}
+        />
+      )}
     </div>
   )
 }
 
-// ─── Sub-componentes ──────────────────────────────────────────────────────────
+// ─── Helpers UI ───────────────────────────────────────────────────────────────
 
-function Stat({ label, value, accent }) {
-  return (
-    <div style={{
-      padding: '7px 12px', borderRadius: 8,
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.06)',
-    }}>
-      <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: accent ?? 'rgba(255,255,255,0.9)', fontFamily: 'Sora, sans-serif' }}>
-        {value}
-      </div>
-    </div>
-  )
+function cellStyle(variant) {
+  const base = {
+    padding: '8px 6px', minWidth: 90, textAlign: 'center',
+    borderBottom: '1px solid rgba(255,255,255,0.04)',
+    borderRight: '1px solid rgba(255,255,255,0.04)',
+    transition: 'background 0.1s',
+  }
+  if (variant === 'required') return { ...base, background: 'rgba(52,199,89,0.05)' }
+  if (variant === 'optional') return { ...base, background: 'rgba(99,179,237,0.05)' }
+  if (variant === 'inherit')  return { ...base, background: 'rgba(255,255,255,0.01)' }
+  return { ...base, background: 'rgba(255,255,255,0.01)' }
 }
 
-function Empty() {
-  return (
-    <div style={{
-      padding: '40px 20px', textAlign: 'center',
-      background: 'rgba(255,255,255,0.02)',
-      border: '1px dashed rgba(255,255,255,0.08)',
-      borderRadius: 12,
-    }}>
-      <FileText size={28} color="rgba(255,255,255,0.15)" style={{ marginBottom: 10 }} />
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', fontFamily: 'Sora, sans-serif', marginBottom: 4 }}>
-        Sin países configurados
-      </div>
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'Space Mono, monospace' }}>
-        Configura países en la sección Países antes de gestionar documentos
-      </div>
-    </div>
-  )
+const thStyle = {
+  padding: '10px 8px', textAlign: 'center', minWidth: 90,
+  borderBottom: '1px solid rgba(255,255,255,0.06)',
+  borderRight: '1px solid rgba(255,255,255,0.04)',
+}
+const thStickyStyle = {
+  ...thStyle, position: 'sticky', left: 0, zIndex: 2,
+  minWidth: 180, textAlign: 'left',
+  background: 'rgba(14,16,22,0.97)',
+  borderRight: '1px solid rgba(255,255,255,0.07)',
+}
+const thTextStyle = {
+  fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.4)',
+  fontFamily: 'Space Mono', textTransform: 'uppercase', letterSpacing: '0.07em',
+}
+const tdStickyStyle = {
+  padding: '10px 12px', minWidth: 180,
+  position: 'sticky', left: 0, zIndex: 1,
+  background: 'rgba(14,16,22,0.97)',
+  borderBottom: '1px solid rgba(255,255,255,0.04)',
+  borderRight: '1px solid rgba(255,255,255,0.07)',
 }
 
 function LoadingState() {
@@ -525,40 +604,9 @@ function LoadingState() {
       <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}>
         <Loader size={16} color="rgba(255,255,255,0.3)" />
       </motion.div>
-      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace' }}>
+      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono' }}>
         Cargando templates OCR…
       </span>
     </div>
   )
-}
-
-const thStyle = {
-  padding: '10px 8px', textAlign: 'center', minWidth: 90,
-  borderBottom: '1px solid rgba(255,255,255,0.06)',
-  borderRight: '1px solid rgba(255,255,255,0.04)',
-}
-
-const thStickyStyle = {
-  ...thStyle,
-  position: 'sticky', left: 0, zIndex: 2,
-  minWidth: 190, textAlign: 'left',
-  background: 'rgba(14,16,22,0.97)',
-  borderRight: '1px solid rgba(255,255,255,0.07)',
-}
-
-const thTextStyle = {
-  fontSize: 8, fontWeight: 700,
-  color: 'rgba(255,255,255,0.45)',
-  fontFamily: 'Space Mono, monospace',
-  textTransform: 'uppercase',
-  letterSpacing: '0.07em',
-}
-
-const tdStickyStyle = {
-  padding: '10px 12px',
-  position: 'sticky', left: 0, zIndex: 1,
-  background: 'rgba(14,16,22,0.97)',
-  borderBottom: '1px solid rgba(255,255,255,0.04)',
-  borderRight: '1px solid rgba(255,255,255,0.07)',
-  minWidth: 190,
 }

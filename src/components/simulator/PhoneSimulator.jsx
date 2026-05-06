@@ -13,8 +13,7 @@ const SCREENS = [
 ]
 
 export default function PhoneSimulator() {
-  const { containerRef, transform, handlers } = useMouseTilt({ maxTiltX: 15, maxTiltY: 10 })
-  const activeScreen = useSimulatorStore((s) => s.activeScreen)
+  const activeScreen    = useSimulatorStore((s) => s.activeScreen)
   const setActiveScreen = useSimulatorStore((s) => s.setActiveScreen)
 
   return (
@@ -53,50 +52,25 @@ export default function PhoneSimulator() {
           ))}
         </div>
 
-        {/* Phone wrapper with 3D perspective */}
-        <div
-          ref={containerRef}
-          {...handlers}
-          style={{
-            perspective: '1000px',
-            cursor: 'pointer',
-            position: 'relative',
-          }}
-        >
-          <div
-            style={{
-              transform: `
-                perspective(1000px)
-                rotateX(${transform.rotateX}deg)
-                rotateY(${transform.rotateY}deg)
-                translateZ(20px)
-                translateY(${transform.translateY}px)
-              `,
-              transition: transform.isHovered ? 'none' : 'transform 0.1s ease-out',
-              transformStyle: 'preserve-3d',
-              filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.6)) drop-shadow(0 0 40px rgba(232, 23, 93, 0.15))',
-            }}
-          >
+        {/* Phone — sin rotación 3D, sombra limpia tipo mockup */}
+        <div style={{ position: 'relative' }}>
+          <div style={{
+            filter: 'drop-shadow(0 32px 48px rgba(0,0,0,0.55)) drop-shadow(0 0 32px rgba(232,23,93,0.12))',
+          }}>
             <PhoneFrame>
               <PhoneScreen />
             </PhoneFrame>
           </div>
 
-          {/* Glow shadow beneath */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: -20,
-              left: '50%',
-              transform: `translateX(-50%) rotateX(${transform.rotateX * 0.5}deg)`,
-              width: 200,
-              height: 30,
-              background: 'radial-gradient(ellipse, rgba(232,23,93,0.25) 0%, transparent 70%)',
-              filter: 'blur(10px)',
-              pointerEvents: 'none',
-              transition: 'all 0.1s ease-out',
-            }}
-          />
+          {/* Glow bajo el teléfono */}
+          <div style={{
+            position: 'absolute', bottom: -16, left: '50%',
+            transform: 'translateX(-50%)',
+            width: 180, height: 24,
+            background: 'radial-gradient(ellipse, rgba(232,23,93,0.2) 0%, transparent 70%)',
+            filter: 'blur(8px)',
+            pointerEvents: 'none',
+          }} />
         </div>
 
         {/* Live indicator */}

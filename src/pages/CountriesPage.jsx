@@ -1,556 +1,781 @@
 import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Globe2, Plus, Layers, Check, AlertCircle, Archive, ChevronRight, X, Settings, Wand2 } from 'lucide-react'
+import {
+  Globe2, Plus, Check, X, ChevronDown, Image, LayoutGrid,
+  Settings, FileText, ArrowUp, Layers, Sparkles, Wand2,
+  GitBranch, Info,
+} from 'lucide-react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
 import PageHeader from '../components/ui/PageHeader'
 import FlagImage from '../components/ui/FlagImage'
 
-// ─── Componente: árbol de herencias ───────────────────────────────────────────
+// ─── 4 módulos consolidados ───────────────────────────────────────────────────
 
-function InheritanceTree({ countries, primaryColor, onPickCountry }) {
-  // Agrupa: hijos directos de 'base', hijos por countryId
-  const byParent = {}
-  for (const c of countries) {
-    const key = c.inheritsFrom ?? 'own'
-    if (!byParent[key]) byParent[key] = []
-    byParent[key].push(c)
+const SUPER_MODULES = [
+  {
+    key: 'branding',
+    label: 'Imagen de marca',
+    Icon: Image,
+    color: '#E8175D',
+    storeKeys: ['branding', 'theme'],
+    fields: [
+      { key: 'logo',            label: 'Logo de la empresa' },
+      { key: 'name',            label: 'Nombre y descripción' },
+      { key: 'primaryColor',    label: 'Color primario' },
+      { key: 'backgroundColor', label: 'Color de fondo' },
+      { key: 'colorMode',       label: 'Modo claro / oscuro' },
+    ],
+  },
+  {
+    key: 'features',
+    label: 'Funciones',
+    Icon: LayoutGrid,
+    color: '#3B82F6',
+    storeKeys: ['features', 'login', 'registration'],
+    fields: [
+      { key: 'loginPhone',   label: 'Login por teléfono' },
+      { key: 'loginEmail',   label: 'Login por email' },
+      { key: 'pin',          label: 'PIN de seguridad' },
+      { key: 'routes',       label: 'Módulo de rutas' },
+      { key: 'onboarding',   label: 'Registro / onboarding' },
+    ],
+  },
+  {
+    key: 'advanced',
+    label: 'Avanzado',
+    Icon: Settings,
+    color: '#8B5CF6',
+    storeKeys: ['advanced'],
+    fields: [
+      { key: 'apiUrl',             label: 'URL del servidor' },
+      { key: 'supportCenterPhone', label: 'Tel. centro de soporte' },
+      { key: 'emergencyPhone',     label: 'Tel. de emergencias' },
+      { key: 'integrations',       label: 'Claves de integraciones' },
+    ],
+  },
+  {
+    key: 'documents',
+    label: 'Documentos',
+    Icon: FileText,
+    color: '#10B981',
+    storeKeys: ['documents'],
+    fields: [
+      { key: 'idTypes',    label: 'Tipos de ID aceptados' },
+      { key: 'ocr',        label: 'Lectura automática (OCR)' },
+      { key: 'required',   label: 'Documentos requeridos' },
+    ],
+  },
+]
+
+// ─── Modos de herencia ────────────────────────────────────────────────────────
+
+const MODES = {
+  inherit: {
+    label: 'Hereda todo',
+    short: 'Hereda',
+    Icon: ArrowUp,
+    color: 'rgba(255,255,255,0.45)',
+    bg: 'rgba(255,255,255,0.05)',
+    border: 'rgba(255,255,255,0.1)',
+  },
+  'override-base': {
+    label: 'Parcial',
+    short: 'Parcial',
+    Icon: Layers,
+    color: 'rgba(99,179,237,0.9)',
+    bg: 'rgba(99,179,237,0.08)',
+    border: 'rgba(99,179,237,0.25)',
+  },
+  custom: {
+    label: 'Propio',
+    short: 'Propio',
+    Icon: Sparkles,
+    color: 'rgba(232,23,93,0.9)',
+    bg: 'rgba(232,23,93,0.08)',
+    border: 'rgba(232,23,93,0.3)',
+  },
+}
+
+// Devuelve el modo representativo del super-módulo (primer storeKey disponible)
+function getSuperModuleMode(country, superModKey) {
+  const sm = SUPER_MODULES.find(m => m.key === superModKey)
+  if (!sm) return 'inherit'
+  for (const k of sm.storeKeys) {
+    const m = country.moduleModes?.[k]
+    if (m && m !== 'inherit') return m
   }
+  return country.moduleModes?.[sm.storeKeys[0]] ?? 'inherit'
+}
 
-  function renderChildren(parentKey, depth = 0) {
-    const list = byParent[parentKey] ?? []
-    if (list.length === 0) return null
-    return (
-      <div style={{ paddingLeft: depth === 0 ? 0 : 18 }}>
-        {list.map(c => (
-          <div key={c.id ?? c.countryCode}>
-            <button
-              onClick={() => onPickCountry(c)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 9,
-                padding: '6px 10px', marginBottom: 3,
-                borderRadius: 7, width: '100%',
-                background: c.status === 'active'
-                  ? 'rgba(255,255,255,0.04)'
-                  : c.status === 'draft' ? 'rgba(255,180,0,0.06)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${
-                  c.status === 'active' ? 'rgba(255,255,255,0.07)' :
-                  c.status === 'draft' ? 'rgba(255,180,0,0.2)' : 'rgba(255,255,255,0.05)'
-                }`,
-                cursor: 'pointer', textAlign: 'left',
-                opacity: c.status === 'inactive' ? 0.5 : 1,
-                transition: 'all 0.12s ease',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(232,23,93,0.08)'}
-              onMouseLeave={e => e.currentTarget.style.background = c.status === 'active'
-                ? 'rgba(255,255,255,0.04)'
-                : c.status === 'draft' ? 'rgba(255,180,0,0.06)' : 'rgba(255,255,255,0.02)'}
-            >
-              <div style={{ width: 22, height: 16, borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
-                <FlagImage code={c.countryCode} size={22} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif' }}>
-                  {c.name ?? c.countryCode}
-                  {c.isPrimary && (
-                    <span style={{
-                      fontSize: 7, padding: '1px 4px', borderRadius: 3,
-                      background: `${primaryColor}25`, color: primaryColor,
-                      fontFamily: 'Space Mono, monospace', fontWeight: 700, letterSpacing: '0.06em',
-                    }}>
-                      PRIMARIO
-                    </span>
-                  )}
-                  <StatusBadge status={c.status} primaryColor={primaryColor} draftStep={c.draftStep} totalSteps={c.totalSteps} />
-                </div>
-                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace', marginTop: 2 }}>
-                  {c.countryCode} · {inheritanceLabel(c, countries)}
-                </div>
-              </div>
-              <ChevronRight size={11} color="rgba(255,255,255,0.25)" />
-            </button>
-            {/* Recurse: hijos cuyo inheritsFrom === este país */}
-            {renderChildren(c.id, depth + 1)}
+// ─── Chip de módulo en la card del país ───────────────────────────────────────
+
+function ModuleChip({ country, mod, onClick }) {
+  const mode = getSuperModuleMode(country, mod.key)
+  const cfg  = MODES[mode] ?? MODES.inherit
+  const Icon = mod.Icon
+
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        padding: '4px 9px', borderRadius: 20, cursor: 'pointer',
+        background: cfg.bg, border: `1px solid ${cfg.border}`,
+        transition: 'all 0.15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.25)' }}
+      onMouseLeave={e => { e.currentTarget.style.filter = 'none' }}
+      title={`${mod.label} · ${cfg.label}`}
+    >
+      <Icon size={9} color={cfg.color} />
+      <span style={{ fontSize: 9, fontWeight: 600, color: cfg.color, fontFamily: 'Sora', whiteSpace: 'nowrap' }}>
+        {mod.label}
+      </span>
+      <span style={{ fontSize: 8, color: cfg.color, opacity: 0.7, fontFamily: 'Space Mono' }}>
+        · {cfg.short}
+      </span>
+    </button>
+  )
+}
+
+// ─── Card de país ─────────────────────────────────────────────────────────────
+
+function CountryCard({ country, allCountries }) {
+  const navigate     = useNavigate()
+  const primaryColor = useTenantStore(s => s.theme.light?.primary ?? '#E8175D')
+
+  const parentLabel = (() => {
+    if (!country.inheritsFrom || country.inheritsFrom === 'own') return 'Config propia'
+    if (country.inheritsFrom === 'base') return 'Hereda base'
+    const p = allCountries.find(c => c.id === country.inheritsFrom)
+    return p ? `Hereda de ${p.name ?? p.countryCode}` : 'Hereda de país'
+  })()
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      onClick={() => navigate(`/countries/${country.id}`)}
+      whileHover={{ scale: 1.005 }}
+      whileTap={{ scale: 0.998 }}
+      style={{
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 14, padding: '14px 16px',
+        display: 'flex', flexDirection: 'column', gap: 12,
+        cursor: 'pointer',
+      }}
+    >
+      {/* Fila superior: bandera + info + status */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 36, height: 25, borderRadius: 4, overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>
+          <FlagImage code={country.countryCode} size={36} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: 'Sora' }}>
+              {country.name ?? country.countryCode}
+            </span>
+            {country.isPrimary && (
+              <span style={{ fontSize: 7, padding: '1px 5px', borderRadius: 4, background: `${primaryColor}25`, color: primaryColor, fontFamily: 'Space Mono', fontWeight: 700, letterSpacing: '0.05em' }}>
+                PRIMARIO
+              </span>
+            )}
+            <StatusBadge status={country.status} />
           </div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono', marginTop: 2 }}>
+            {country.countryCode} · {parentLabel}
+          </div>
+        </div>
+      </div>
+
+      {/* Módulos + clic para abrir detalle */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {SUPER_MODULES.map(mod => (
+          <ModuleChip
+            key={mod.key}
+            country={country}
+            mod={mod}
+            onClick={() => navigate(`/countries/${country.id}`)}
+          />
         ))}
       </div>
-    )
-  }
-
-  return (
-    <div style={{
-      background: 'rgba(255,255,255,0.02)',
-      border: '1px solid rgba(255,255,255,0.06)',
-      borderRadius: 12,
-      padding: '14px 16px',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <Layers size={13} color="rgba(255,255,255,0.5)" />
-        <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Config base
-        </span>
-      </div>
-      {renderChildren('base')}
-      {byParent['own'] && byParent['own'].length > 0 && (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, marginBottom: 10 }}>
-            <Globe2 size={13} color="rgba(255,255,255,0.5)" />
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Configuración propia (own)
-            </span>
-          </div>
-          {renderChildren('own')}
-        </>
-      )}
-    </div>
+    </motion.div>
   )
 }
 
-function inheritanceLabel(country, all) {
-  if (country.inheritsFrom === null || country.inheritsFrom === 'own' || country.inheritsFrom === undefined) {
-    return 'config propia'
-  }
-  if (country.inheritsFrom === 'base') return 'hereda de base'
-  const parent = all.find(c => c.id === country.inheritsFrom)
-  return parent ? `hereda de ${parent.name ?? parent.countryCode}` : 'hereda de país desconocido'
-}
+// ─── Modal de herencia ────────────────────────────────────────────────────────
 
-function StatusBadge({ status, primaryColor, draftStep, totalSteps }) {
-  if (status === 'active') return null  // default, no necesita badge
-  if (status === 'draft') {
-    return (
-      <span style={{
-        fontSize: 7, padding: '1px 5px', borderRadius: 3,
-        background: 'rgba(255,180,0,0.15)', color: 'rgba(255,180,0,0.9)',
-        fontFamily: 'Space Mono, monospace', fontWeight: 700, letterSpacing: '0.05em',
-      }}>
-        DRAFT {draftStep ?? 0}/{totalSteps ?? 7}
-      </span>
-    )
-  }
-  if (status === 'inactive') {
-    return (
-      <span style={{
-        fontSize: 7, padding: '1px 5px', borderRadius: 3,
-        background: 'rgba(150,150,150,0.15)', color: 'rgba(255,255,255,0.4)',
-        fontFamily: 'Space Mono, monospace', fontWeight: 700, letterSpacing: '0.05em',
-      }}>
-        INACTIVO
-      </span>
-    )
-  }
-  return null
-}
+function InheritanceModal({ country, initialModule, allCountries, onClose }) {
+  const setCountryModuleMode    = useTenantStore(s => s.setCountryModuleMode)
+  const setCountryCustomModule  = useTenantStore(s => s.setCountryCustomModule)
+  const setCountryInheritance   = useTenantStore(s => s.setCountryInheritance)
 
-// ─── Página ────────────────────────────────────────────────────────────────────
-
-export default function CountriesPage() {
-  const navigate       = useNavigate()
-  const tenantCode     = useTenantStore((s) => s.advanced.tenantCode)
-  const setupComplete  = useTenantStore((s) => s.advanced._setupComplete === true)
-  const countryConfigs = useTenantStore((s) => s.countryConfigs)
-  const setActiveCountry = useTenantStore((s) => s.setActiveCountry)
-  const [createOpen, setCreateOpen] = useState(false)
-
-  // Bloqueos (después de hooks)
-  if (!tenantCode) return <Navigate to="/branding" replace />
-  if (!setupComplete) return <Navigate to="/setup" replace />
-
-  const total       = countryConfigs.length
-  const totalActive = countryConfigs.filter(c => c.status === 'active').length
-  const totalDraft  = countryConfigs.filter(c => c.status === 'draft').length
-  const totalInactive = countryConfigs.filter(c => c.status === 'inactive').length
-
-  function handlePickCountry(c) {
-    if (c.status === 'draft') {
-      navigate(`/countries/wizard/${c.id}`)
-    } else {
-      setActiveCountry(c.countryCode)
-      // Por ahora navega a /locale para editar (pronto será un editor inline en /countries)
-      navigate('/locale')
+  const [activeModKey, setActiveModKey] = useState(initialModule ?? SUPER_MODULES[0].key)
+  const [localState, setLocalState] = useState(() => {
+    // Inicializar estado local desde el store para cada módulo
+    const s = {}
+    for (const sm of SUPER_MODULES) {
+      const mode = getSuperModuleMode(country, sm.key)
+      const inheritedFields = country.customModules?.[sm.key]?.inheritedFields ?? sm.fields.map(f => f.key)
+      s[sm.key] = { mode, inheritedFields, source: country.inheritsFrom ?? 'base' }
     }
+    return s
+  })
+
+  const activeMod  = SUPER_MODULES.find(m => m.key === activeModKey)
+  const activeData = localState[activeModKey]
+
+  const sources = [
+    { value: 'base', label: 'Configuración base', sub: 'del tenant' },
+    ...allCountries
+      .filter(c => c.id !== country.id && c.status === 'active')
+      .map(c => ({ value: c.id, label: c.name ?? c.countryCode, sub: c.countryCode, flag: c.countryCode })),
+  ]
+
+  function setMod(key, patch) {
+    setLocalState(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
   }
 
+  function toggleField(fieldKey) {
+    const cur = activeData.inheritedFields
+    const next = cur.includes(fieldKey) ? cur.filter(f => f !== fieldKey) : [...cur, fieldKey]
+    setMod(activeModKey, { inheritedFields: next })
+  }
+
+  function toggleAllFields(inherit) {
+    setMod(activeModKey, {
+      inheritedFields: inherit ? activeMod.fields.map(f => f.key) : [],
+      mode: inherit ? 'inherit' : 'custom',
+    })
+  }
+
+  function handleSave() {
+    for (const sm of SUPER_MODULES) {
+      const data = localState[sm.key]
+      // Aplicar mode a todos los storeKeys del super-módulo
+      for (const k of sm.storeKeys) {
+        setCountryModuleMode(country.id, k, data.mode)
+      }
+      // Guardar fields en customModules
+      setCountryCustomModule(country.id, sm.key, {
+        inheritedFields: data.inheritedFields,
+      })
+    }
+    // Aplicar fuente de herencia global si todos apuntan al mismo source
+    const sources = [...new Set(Object.values(localState).map(d => d.source))]
+    if (sources.length === 1) {
+      setCountryInheritance(country.id, sources[0] === 'base' ? 'base' : sources[0])
+    }
+    onClose()
+  }
+
+  const allInherited = activeData.inheritedFields.length === activeMod.fields.length
+  const noneInherited = activeData.inheritedFields.length === 0
+
   return (
-    <div>
-      <PageHeader
-        title="Países y herencias"
-        subtitle="Gestión completa de países: estado, herencias, activación y archivado."
-        icon={Globe2}
-      />
-
-      {/* Acciones top */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Stat label="Total" value={total} />
-          <Stat label="Activos" value={totalActive} />
-          <Stat label="Drafts" value={totalDraft} accent="rgba(255,180,0,0.7)" />
-          <Stat label="Inactivos" value={totalInactive} accent="rgba(150,150,150,0.5)" />
-        </div>
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={() => setCreateOpen(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '9px 16px', borderRadius: 9, border: 'none',
-            background: '#E8175D', color: '#fff',
-            fontSize: 12, fontWeight: 700, fontFamily: 'Sora, sans-serif',
-            cursor: 'pointer', boxShadow: '0 4px 16px rgba(232,23,93,0.3)',
-          }}
-        >
-          <Plus size={14} />
-          Crear país
-        </motion.button>
-      </div>
-
-      {/* Estado vacío */}
-      {total === 0 ? (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        style={{
+          width: '100%', maxWidth: 620,
+          background: '#0D1017',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 20, overflow: 'hidden',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
+          display: 'flex', flexDirection: 'column',
+          maxHeight: '90vh',
+        }}
+      >
+        {/* Header */}
         <div style={{
-          padding: '40px 20px', textAlign: 'center',
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px dashed rgba(255,255,255,0.1)',
-          borderRadius: 12,
+          padding: '18px 22px 0',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          flexShrink: 0,
         }}>
-          <Globe2 size={28} color="rgba(255,255,255,0.2)" style={{ marginBottom: 10 }} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.7)', fontFamily: 'Sora, sans-serif', marginBottom: 4 }}>
-            Sin países configurados
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 22, borderRadius: 4, overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
+                <FlagImage code={country.countryCode} size={32} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: 'Sora', letterSpacing: '-0.3px' }}>
+                  {country.name ?? country.countryCode}
+                </div>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono' }}>
+                  Configurar herencias por módulo
+                </div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{
+              width: 28, height: 28, borderRadius: 8, background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <X size={12} color="rgba(255,255,255,0.4)" />
+            </button>
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace' }}>
-            Crea el primer país para empezar a operar
+
+          {/* Tabs de módulos */}
+          <div style={{ display: 'flex', gap: 2 }}>
+            {SUPER_MODULES.map(sm => {
+              const active = sm.key === activeModKey
+              const mode   = localState[sm.key].mode
+              const cfg    = MODES[mode] ?? MODES.inherit
+              const Icon   = sm.Icon
+              return (
+                <button
+                  key={sm.key}
+                  onClick={() => setActiveModKey(sm.key)}
+                  style={{
+                    flex: 1, display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', gap: 4,
+                    padding: '8px 6px 10px',
+                    background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    border: 'none', borderBottom: `2px solid ${active ? sm.color : 'transparent'}`,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Icon size={12} color={active ? sm.color : 'rgba(255,255,255,0.3)'} />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)', fontFamily: 'Sora' }}>
+                      {sm.label}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 8, color: cfg.color, fontFamily: 'Space Mono', opacity: active ? 1 : 0.6 }}>
+                    {cfg.short}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </div>
-      ) : (
-        <InheritanceTree countries={countryConfigs} primaryColor="#E8175D" onPickCountry={handlePickCountry} />
-      )}
 
-      {/* Aviso Fase 2 */}
-      <div style={{
-        marginTop: 20, padding: '12px 14px',
-        background: 'rgba(147,197,253,0.05)',
-        border: '1px solid rgba(147,197,253,0.12)',
-        borderRadius: 10, fontSize: 11,
-        color: 'rgba(147,197,253,0.7)', fontFamily: 'Space Mono, monospace', lineHeight: 1.6,
-      }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <AlertCircle size={12} color="rgba(147,197,253,0.6)" style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>
-            <strong style={{ color: 'rgba(147,197,253,0.9)' }}>Fase 2 activa.</strong>
-            {' '}Crea países con 3 modos: heredar base, heredar de otro país, o config propia (wizard). Cambio de herencia con cascada y desactivación llegan en Fase 3.
-          </span>
+        {/* Cuerpo */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* Fuente de herencia */}
+          <div>
+            <SectionLabel icon={GitBranch}>Heredar configuración de</SectionLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+              {sources.map(src => {
+                const sel = activeData.source === src.value
+                return (
+                  <button
+                    key={src.value}
+                    onClick={() => setMod(activeModKey, { source: src.value })}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '9px 12px', borderRadius: 9, cursor: 'pointer', textAlign: 'left',
+                      background: sel ? `${activeMod.color}12` : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${sel ? activeMod.color + '40' : 'rgba(255,255,255,0.07)'}`,
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {src.flag && (
+                      <div style={{ width: 20, height: 14, borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
+                        <FlagImage code={src.flag} size={20} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
+                      </div>
+                    )}
+                    {!src.flag && (
+                      <div style={{
+                        width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                        background: sel ? `${activeMod.color}20` : 'rgba(255,255,255,0.06)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Layers size={10} color={sel ? activeMod.color : 'rgba(255,255,255,0.4)'} />
+                      </div>
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: sel ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.6)', fontFamily: 'Sora' }}>
+                        {src.label}
+                      </div>
+                      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono' }}>
+                        {src.sub}
+                      </div>
+                    </div>
+                    {sel && <Check size={12} color={activeMod.color} />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Modo de herencia */}
+          <div>
+            <SectionLabel icon={activeMod.Icon}>Modo para {activeMod.label}</SectionLabel>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 8 }}>
+              {Object.entries(MODES).map(([modeKey, cfg]) => {
+                const Icon = cfg.Icon
+                const sel  = activeData.mode === modeKey
+                return (
+                  <button
+                    key={modeKey}
+                    onClick={() => {
+                      setMod(activeModKey, {
+                        mode: modeKey,
+                        inheritedFields: modeKey === 'inherit'
+                          ? activeMod.fields.map(f => f.key)
+                          : modeKey === 'custom'
+                          ? []
+                          : activeData.inheritedFields,
+                      })
+                    }}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                      padding: '12px 8px', borderRadius: 10, cursor: 'pointer',
+                      background: sel ? cfg.bg : 'rgba(255,255,255,0.02)',
+                      border: `2px solid ${sel ? cfg.border : 'rgba(255,255,255,0.06)'}`,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <Icon size={16} color={sel ? cfg.color : 'rgba(255,255,255,0.25)'} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: sel ? cfg.color : 'rgba(255,255,255,0.4)', fontFamily: 'Sora' }}>
+                      {cfg.label}
+                    </span>
+                    <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.25)', fontFamily: 'Space Mono', textAlign: 'center', lineHeight: 1.4 }}>
+                      {modeKey === 'inherit' && 'Igual al padre'}
+                      {modeKey === 'override-base' && 'Campos selectivos'}
+                      {modeKey === 'custom' && 'Configuración propia'}
+                    </span>
+                    {sel && (
+                      <div style={{ width: 16, height: 16, borderRadius: '50%', background: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Check size={9} color="#fff" />
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Campos — solo cuando el modo no es 'inherit' ni 'custom' puro */}
+          {activeData.mode !== 'inherit' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <SectionLabel icon={Info}>¿Qué campos heredar?</SectionLabel>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => toggleAllFields(true)} style={quickBtnStyle(!noneInherited)}>
+                    Todos
+                  </button>
+                  <button onClick={() => toggleAllFields(false)} style={quickBtnStyle(noneInherited)}>
+                    Ninguno
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {activeMod.fields.map(field => {
+                  const on = activeData.inheritedFields.includes(field.key)
+                  return (
+                    <button
+                      key={field.key}
+                      onClick={() => toggleField(field.key)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '10px 14px', borderRadius: 9, cursor: 'pointer', textAlign: 'left',
+                        background: on ? `${activeMod.color}08` : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${on ? activeMod.color + '30' : 'rgba(255,255,255,0.06)'}`,
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      <div style={{
+                        width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                        background: on ? activeMod.color : 'rgba(255,255,255,0.06)',
+                        border: `2px solid ${on ? activeMod.color : 'rgba(255,255,255,0.12)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'all 0.15s',
+                      }}>
+                        {on && <Check size={9} color="#fff" />}
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: on ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)', fontFamily: 'Sora', transition: 'color 0.12s' }}>
+                        {field.label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeData.mode === 'inherit' && (
+            <div style={{
+              padding: '12px 14px', borderRadius: 10,
+              background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+            }}>
+              <Info size={13} color="rgba(255,255,255,0.3)" style={{ flexShrink: 0, marginTop: 1 }} />
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono', lineHeight: 1.6 }}>
+                Todos los campos de <strong style={{ color: 'rgba(255,255,255,0.65)' }}>{activeMod.label}</strong> se tomarán exactamente de la fuente seleccionada. Para personalizar campos individuales, cambiá a modo <strong style={{ color: 'rgba(99,179,237,0.8)' }}>Parcial</strong>.
+              </span>
+            </div>
+          )}
+
+          {activeData.mode === 'custom' && (
+            <div style={{
+              padding: '12px 14px', borderRadius: 10,
+              background: 'rgba(232,23,93,0.06)', border: '1px solid rgba(232,23,93,0.15)',
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+            }}>
+              <Sparkles size={13} color="rgba(232,23,93,0.6)" style={{ flexShrink: 0, marginTop: 1 }} />
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'Space Mono', lineHeight: 1.6 }}>
+                Este módulo tendrá configuración <strong style={{ color: 'rgba(232,23,93,0.8)' }}>completamente propia</strong>. Podés editarlo desde la sección correspondiente del panel.
+              </span>
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* Modal de creación */}
-      <CreateCountryModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-      />
+        {/* Footer */}
+        <div style={{
+          padding: '14px 22px 18px', borderTop: '1px solid rgba(255,255,255,0.07)',
+          flexShrink: 0, display: 'flex', gap: 8,
+        }}>
+          <button onClick={onClose} style={{
+            flex: 1, padding: '10px', borderRadius: 10,
+            background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+            color: 'rgba(255,255,255,0.4)', fontSize: 12, fontFamily: 'Sora', cursor: 'pointer',
+          }}>
+            Cancelar
+          </button>
+          <button onClick={handleSave} style={{
+            flex: 2, padding: '10px', borderRadius: 10,
+            background: '#E8175D', border: 'none',
+            color: '#fff', fontSize: 12, fontFamily: 'Sora', fontWeight: 600, cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(232,23,93,0.3)',
+          }}>
+            Guardar herencias
+          </button>
+        </div>
+      </motion.div>
     </div>
   )
 }
 
-// ─── Modal: Crear país (modo A/B/C) ──────────────────────────────────────────
+// ─── Modal: crear país ────────────────────────────────────────────────────────
 
 function CreateCountryModal({ open, onClose }) {
   const navigate       = useNavigate()
-  const countryConfigs = useTenantStore((s) => s.countryConfigs)
-  const createCountry  = useTenantStore((s) => s.createCountry)
+  const countryConfigs = useTenantStore(s => s.countryConfigs)
+  const createCountry  = useTenantStore(s => s.createCountry)
 
-  const [step, setStep] = useState(1)        // 1: pick country, 2: pick mode, 3: pick source/customize (mode B)
+  const [step, setStep]               = useState(1)
   const [selectedCode, setSelectedCode] = useState(null)
-  const [search, setSearch] = useState('')
-  const [mode, setMode] = useState(null)     // 'inherit-base' | 'inherit-from' | 'own'
-  const [sourceId, setSourceId] = useState(null)
-  const [forkType, setForkType] = useState(null)  // 'completa' | 'personalizada'
+  const [mode, setMode]               = useState(null)
+  const [search, setSearch]           = useState('')
+  // Step 3: herencia desde país
+  const [sourceId, setSourceId]       = useState(null)
+  const [showModuleConfig, setShowModuleConfig] = useState(false)
 
-  const existingCodes = countryConfigs.map(c => c.countryCode)
+  const existingCodes   = countryConfigs.map(c => c.countryCode)
   const activeCountries = countryConfigs.filter(c => c.status === 'active')
+  const filtered = COUNTRY_CATALOG.filter(c =>
+    !existingCodes.includes(c.countryCode) &&
+    (c.name.toLowerCase().includes(search.toLowerCase()) || c.countryCode.toLowerCase().includes(search.toLowerCase()))
+  )
 
-  function reset() {
-    setStep(1); setSelectedCode(null); setSearch('')
-    setMode(null); setSourceId(null); setForkType(null)
-  }
-  function close() {
-    reset(); onClose()
-  }
+  function reset() { setStep(1); setSelectedCode(null); setSearch(''); setMode(null); setSourceId(null); setShowModuleConfig(false) }
+  function close()  { reset(); onClose() }
 
   function handleCreate(modeArg, opts = {}) {
     const cat = COUNTRY_CATALOG.find(c => c.countryCode === selectedCode)
     if (!cat) return
     const newId = createCountry(cat, { mode: modeArg, ...opts })
     close()
-    if (modeArg === 'own') {
-      navigate(`/countries/wizard/${newId}`)
-    }
+    if (modeArg === 'own') navigate(`/countries/wizard/${newId}`)
   }
 
-  const filtered = COUNTRY_CATALOG.filter(c =>
-    !existingCodes.includes(c.countryCode) &&
-    (c.name.toLowerCase().includes(search.toLowerCase()) || c.countryCode.toLowerCase().includes(search.toLowerCase()))
-  )
+  const totalSteps = mode === 'inherit-from' ? 3 : 2
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
           onClick={close}
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(8,10,15,0.7)', backdropFilter: 'blur(8px)',
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
           }}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 4 }}
-            transition={{ duration: 0.18 }}
+            exit={{ opacity: 0, scale: 0.96 }}
             onClick={e => e.stopPropagation()}
             style={{
-              width: '100%', maxWidth: 580,
-              background: 'rgba(20,23,32,0.95)',
+              width: '100%', maxWidth: 560,
+              background: 'rgba(20,23,32,0.98)',
               border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 16, overflow: 'hidden',
+              borderRadius: 18, overflow: 'hidden',
               boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
             }}
           >
             {/* Header */}
-            <div style={{
-              padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.06)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: 'Sora, sans-serif', letterSpacing: '-0.3px' }}>
-                  Crear país
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: 'Sora', letterSpacing: '-0.3px' }}>
+                  Agregar país
                 </div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace', marginTop: 2 }}>
-                  Paso {step} de {step === 3 ? 3 : 2}
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', fontFamily: 'Space Mono', marginTop: 2 }}>
+                  Paso {step} de {totalSteps}
                 </div>
               </div>
-              <button onClick={close} style={{
-                width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.04)', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <X size={13} color="rgba(255,255,255,0.5)" />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {/* Progress dots */}
+                {Array.from({ length: totalSteps }).map((_, i) => (
+                  <div key={i} style={{
+                    width: i + 1 === step ? 16 : 6, height: 6, borderRadius: 3,
+                    background: i + 1 <= step ? '#E8175D' : 'rgba(255,255,255,0.12)',
+                    transition: 'all 0.2s',
+                  }} />
+                ))}
+                <button onClick={close} style={{ marginLeft: 8, width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X size={13} color="rgba(255,255,255,0.5)" />
+                </button>
+              </div>
             </div>
 
             {/* Body */}
-            <div style={{ padding: '20px 22px', maxHeight: '70vh', overflowY: 'auto' }}>
-
-              {/* STEP 1: Pick country */}
-              {step === 1 && (
-                <>
-                  <FieldLabel>Selecciona el país del catálogo</FieldLabel>
-                  <input
-                    autoFocus
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="Buscar país..."
-                    style={{
-                      width: '100%', padding: '8px 11px', marginBottom: 12, boxSizing: 'border-box',
-                      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: 7, color: '#fff', fontSize: 11, fontFamily: 'Sora, sans-serif', outline: 'none',
-                    }}
-                  />
-                  <div style={{
-                    maxHeight: 280, overflowY: 'auto',
-                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(82px, 1fr))', gap: 7,
-                  }}>
-                    {filtered.map(c => {
-                      const selected = selectedCode === c.countryCode
-                      return (
-                        <button
-                          key={c.countryCode}
-                          onClick={() => setSelectedCode(c.countryCode)}
-                          title={c.name}
-                          style={{
+            <div style={{ padding: '20px 22px', maxHeight: '65vh', overflowY: 'auto' }}>
+              <AnimatePresence mode="wait">
+                {step === 1 && (
+                  <motion.div key="s1" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+                    <FieldLabel>Seleccioná el país</FieldLabel>
+                    <input
+                      autoFocus value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Buscar país..."
+                      style={{ width: '100%', padding: '8px 11px', marginBottom: 12, boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#fff', fontSize: 11, fontFamily: 'Sora', outline: 'none' }}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 7, maxHeight: 280, overflowY: 'auto' }}>
+                      {filtered.map(c => {
+                        const sel = selectedCode === c.countryCode
+                        return (
+                          <button key={c.countryCode} onClick={() => setSelectedCode(c.countryCode)} style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                             padding: '8px 6px', borderRadius: 8, cursor: 'pointer',
-                            background: selected ? 'rgba(232,23,93,0.18)' : 'rgba(255,255,255,0.03)',
-                            border: selected ? '1px solid rgba(232,23,93,0.6)' : '1px solid rgba(255,255,255,0.07)',
-                            transition: 'all 0.12s ease',
-                          }}
-                        >
-                          <div style={{ width: 40, height: 28, borderRadius: 4, overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
-                            <FlagImage code={c.countryCode} size={40} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
-                          </div>
-                          <div style={{ fontSize: 8, fontFamily: 'Space Mono, monospace', fontWeight: 700, color: selected ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)' }}>
-                            {c.countryCode}
-                          </div>
-                        </button>
-                      )
-                    })}
-                    {filtered.length === 0 && (
-                      <div style={{ gridColumn: '1/-1', fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace', padding: '20px 0', textAlign: 'center' }}>
-                        Sin resultados
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+                            background: sel ? 'rgba(232,23,93,0.18)' : 'rgba(255,255,255,0.03)',
+                            border: sel ? '1px solid rgba(232,23,93,0.6)' : '1px solid rgba(255,255,255,0.07)',
+                            transition: 'all 0.12s',
+                          }}>
+                            <div style={{ width: 40, height: 28, borderRadius: 4, overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
+                              <FlagImage code={c.countryCode} size={40} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
+                            </div>
+                            <span style={{ fontSize: 8, fontFamily: 'Space Mono', fontWeight: 700, color: sel ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)' }}>
+                              {c.countryCode}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                )}
 
-              {/* STEP 2: Pick mode */}
-              {step === 2 && (
-                <>
-                  <FieldLabel>¿Cómo configurar este país?</FieldLabel>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-                    <ModeCard
-                      title="Heredar config base"
-                      sublabel="Listo en 1 paso · ACTIVE inmediato"
-                      description="Toma toda la config base del tenant (identidad, tema, módulos, idiomas, login, avanzado)."
-                      Icon={Layers}
-                      selected={mode === 'inherit-base'}
-                      onClick={() => setMode('inherit-base')}
-                    />
-                    <ModeCard
-                      title="Heredar de otro país"
-                      sublabel={`${activeCountries.length === 0 ? 'Sin países activos disponibles' : `${activeCountries.length} país(es) disponibles`}`}
-                      description="Copia la config de un país que ya esté ACTIVE. Puedes heredarla completa o personalizar por módulo."
-                      Icon={Globe2}
-                      selected={mode === 'inherit-from'}
-                      disabled={activeCountries.length === 0}
-                      onClick={() => activeCountries.length > 0 && setMode('inherit-from')}
-                    />
-                    <ModeCard
-                      title="Config propia"
-                      sublabel="DRAFT · 7 pasos del wizard"
-                      description="Configura desde cero. Cada paso se guarda automáticamente, podés retomar desde otro dispositivo."
-                      Icon={Wand2}
-                      selected={mode === 'own'}
-                      onClick={() => setMode('own')}
-                    />
-                  </div>
-                </>
-              )}
+                {step === 2 && (
+                  <motion.div key="s2" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+                    <FieldLabel>¿Cómo configurar este país?</FieldLabel>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 4 }}>
+                      {[
+                        { id: 'inherit-base', title: 'Heredar config base', sub: 'Activo inmediatamente', desc: 'Toma toda la configuración base del tenant sin modificaciones.', Icon: Layers },
+                        { id: 'inherit-from', title: 'Heredar de otro país', sub: activeCountries.length === 0 ? 'Sin países activos' : `${activeCountries.length} disponibles`, desc: 'Copia o hereda la config de un país activo. Podés elegir módulo por módulo.', Icon: Globe2, disabled: activeCountries.length === 0 },
+                        { id: 'own', title: 'Config propia', sub: 'Wizard paso a paso', desc: 'Configuración desde cero con wizard guiado.', Icon: Wand2 },
+                      ].map(opt => {
+                        const sel = mode === opt.id
+                        return (
+                          <button key={opt.id} onClick={() => !opt.disabled && setMode(opt.id)} disabled={opt.disabled} style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 12, padding: '13px 14px', borderRadius: 10, textAlign: 'left',
+                            background: sel ? 'rgba(232,23,93,0.1)' : 'rgba(255,255,255,0.02)',
+                            border: sel ? '1px solid rgba(232,23,93,0.45)' : '1px solid rgba(255,255,255,0.06)',
+                            cursor: opt.disabled ? 'not-allowed' : 'pointer', opacity: opt.disabled ? 0.4 : 1,
+                            transition: 'all 0.12s',
+                          }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: sel ? 'rgba(232,23,93,0.2)' : 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <opt.Icon size={15} color={sel ? '#E8175D' : 'rgba(255,255,255,0.4)'} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: 'Sora' }}>{opt.title}</span>
+                                <span style={{ fontSize: 9, color: sel ? '#E8175D' : 'rgba(255,255,255,0.35)', fontFamily: 'Space Mono' }}>{opt.sub}</span>
+                              </div>
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'Sora', lineHeight: 1.4 }}>{opt.desc}</span>
+                            </div>
+                            {sel && <Check size={13} color="#E8175D" style={{ flexShrink: 0, marginTop: 4 }} />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                )}
 
-              {/* STEP 3: Pick source for mode B */}
-              {step === 3 && mode === 'inherit-from' && (
-                <>
-                  <FieldLabel>Heredar de qué país</FieldLabel>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-                    {activeCountries.map(c => (
-                      <button
-                        key={c.id}
-                        onClick={() => setSourceId(c.id)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '9px 12px', borderRadius: 8,
+                {step === 3 && mode === 'inherit-from' && (
+                  <motion.div key="s3" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+                    <FieldLabel>¿Heredar de qué país?</FieldLabel>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {activeCountries.map(c => (
+                        <button key={c.id} onClick={() => setSourceId(c.id)} style={{
+                          display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8,
                           background: sourceId === c.id ? 'rgba(232,23,93,0.12)' : 'rgba(255,255,255,0.03)',
                           border: sourceId === c.id ? '1px solid rgba(232,23,93,0.5)' : '1px solid rgba(255,255,255,0.07)',
-                          cursor: 'pointer', textAlign: 'left',
-                        }}
-                      >
-                        <div style={{ width: 22, height: 16, borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
-                          <FlagImage code={c.countryCode} size={22} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
-                        </div>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif' }}>
-                          {c.name ?? c.countryCode}
-                        </span>
-                        {sourceId === c.id && <Check size={12} color="#E8175D" style={{ marginLeft: 'auto' }} />}
-                      </button>
-                    ))}
-                  </div>
-
-                  {sourceId && (
-                    <>
-                      <FieldLabel>Tipo de herencia</FieldLabel>
-                      <div style={{ display: 'flex', gap: 10 }}>
-                        <button
-                          onClick={() => setForkType('completa')}
-                          style={typeBtnStyle(forkType === 'completa')}
-                        >
-                          <strong style={{ display: 'block', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>Completa</strong>
-                          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace' }}>
-                            Hereda los 7 módulos tal cual
+                          cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
+                        }}>
+                          <div style={{ width: 22, height: 16, borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
+                            <FlagImage code={c.countryCode} size={22} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 0 }} />
+                          </div>
+                          <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora' }}>
+                            {c.name ?? c.countryCode}
                           </span>
+                          {sourceId === c.id && <Check size={12} color="#E8175D" />}
                         </button>
-                        <button
-                          onClick={() => alert('TODO: editor por módulo (próxima iteración Fase 2)')}
-                          style={{ ...typeBtnStyle(false), opacity: 0.5, cursor: 'not-allowed' }}
-                          disabled
-                        >
-                          <strong style={{ display: 'block', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>Personalizada</strong>
-                          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace' }}>
-                            Override por módulo (pronto)
-                          </span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
+                      ))}
+                    </div>
+                    <div style={{
+                      marginTop: 12, padding: '10px 12px', borderRadius: 8,
+                      background: 'rgba(99,179,237,0.06)', border: '1px solid rgba(99,179,237,0.15)',
+                      fontSize: 10, color: 'rgba(99,179,237,0.7)', fontFamily: 'Space Mono', lineHeight: 1.5,
+                    }}>
+                      Una vez creado el país podrás configurar la herencia módulo por módulo desde la vista de Países.
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Footer */}
-            <div style={{
-              padding: '14px 22px', borderTop: '1px solid rgba(255,255,255,0.06)',
-              display: 'flex', gap: 8, justifyContent: 'space-between',
-              background: 'rgba(255,255,255,0.02)',
-            }}>
-              <button
-                onClick={() => step === 1 ? close() : setStep(s => s - 1)}
-                style={{
-                  padding: '9px 16px', borderRadius: 7,
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  background: 'transparent', color: 'rgba(255,255,255,0.5)',
-                  fontSize: 11, fontFamily: 'Sora, sans-serif', cursor: 'pointer',
-                }}
-              >
+            <div style={{ padding: '14px 22px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 8, background: 'rgba(255,255,255,0.02)' }}>
+              <button onClick={() => step === 1 ? close() : setStep(s => s - 1)} style={{ padding: '9px 16px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: 'Sora', cursor: 'pointer' }}>
                 {step === 1 ? 'Cancelar' : 'Anterior'}
               </button>
-
-              {/* Botón principal — varía por step y modo */}
               {step === 1 && (
-                <button
-                  onClick={() => selectedCode && setStep(2)}
-                  disabled={!selectedCode}
-                  style={{
-                    padding: '9px 22px', borderRadius: 7, border: 'none',
-                    background: selectedCode ? '#E8175D' : 'rgba(232,23,93,0.3)',
-                    color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'Sora, sans-serif',
-                    cursor: selectedCode ? 'pointer' : 'not-allowed',
-                  }}
-                >
+                <button onClick={() => selectedCode && setStep(2)} disabled={!selectedCode} style={primaryBtnStyle(!selectedCode)}>
                   Siguiente
                 </button>
               )}
-
               {step === 2 && (
                 <button
+                  disabled={!mode}
                   onClick={() => {
                     if (mode === 'inherit-base') handleCreate('inherit-base')
                     else if (mode === 'own')     handleCreate('own')
                     else if (mode === 'inherit-from') setStep(3)
                   }}
-                  disabled={!mode}
-                  style={{
-                    padding: '9px 22px', borderRadius: 7, border: 'none',
-                    background: mode ? '#E8175D' : 'rgba(232,23,93,0.3)',
-                    color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'Sora, sans-serif',
-                    cursor: mode ? 'pointer' : 'not-allowed',
-                  }}
+                  style={primaryBtnStyle(!mode)}
                 >
-                  {mode === 'own' ? 'Empezar wizard' : mode === 'inherit-base' ? 'Crear (active)' : 'Siguiente'}
+                  {mode === 'own' ? 'Empezar wizard' : mode === 'inherit-base' ? 'Crear país' : 'Siguiente'}
                 </button>
               )}
-
               {step === 3 && (
-                <button
-                  onClick={() => sourceId && forkType === 'completa' && handleCreate('inherit-from', { sourceId })}
-                  disabled={!sourceId || !forkType}
-                  style={{
-                    padding: '9px 22px', borderRadius: 7, border: 'none',
-                    background: (sourceId && forkType) ? '#E8175D' : 'rgba(232,23,93,0.3)',
-                    color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'Sora, sans-serif',
-                    cursor: (sourceId && forkType) ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  Crear (active)
+                <button onClick={() => sourceId && handleCreate('inherit-from', { sourceId })} disabled={!sourceId} style={primaryBtnStyle(!sourceId)}>
+                  Crear país
                 </button>
               )}
             </div>
@@ -561,81 +786,145 @@ function CreateCountryModal({ open, onClose }) {
   )
 }
 
-function ModeCard({ title, sublabel, description, Icon, selected, disabled, onClick }) {
+// ─── Página principal ─────────────────────────────────────────────────────────
+
+export default function CountriesPage() {
+  const tenantCode     = useTenantStore(s => s.advanced.tenantCode)
+  const setupComplete  = useTenantStore(s => s.advanced._setupComplete === true)
+  const countryConfigs = useTenantStore(s => s.countryConfigs)
+  const activeCountry  = useTenantStore(s => s.activeCountry)
+
+  const [createOpen, setCreateOpen] = useState(false)
+
+  if (!tenantCode)    return <Navigate to="/brand" replace />
+  if (!setupComplete) return <Navigate to="/setup" replace />
+
+  // Si hay un país seleccionado en el switcher, ir directo al detalle
+  if (activeCountry) {
+    const c = countryConfigs.find(x => x.countryCode === activeCountry)
+    if (c) return <Navigate to={`/countries/${c.id}`} replace />
+  }
+
+  const total         = countryConfigs.length
+  const totalActive   = countryConfigs.filter(c => c.status === 'active').length
+  const totalDraft    = countryConfigs.filter(c => c.status === 'draft').length
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 12,
-        padding: '14px 16px', borderRadius: 10,
-        background: selected ? 'rgba(232,23,93,0.10)' : 'rgba(255,255,255,0.03)',
-        border: selected ? '1px solid rgba(232,23,93,0.45)' : '1px solid rgba(255,255,255,0.07)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.45 : 1,
-        textAlign: 'left', transition: 'all 0.12s ease',
-      }}
-    >
-      <div style={{
-        width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-        background: selected ? 'rgba(232,23,93,0.2)' : 'rgba(255,255,255,0.05)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Icon size={15} color={selected ? '#E8175D' : 'rgba(255,255,255,0.5)'} />
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: 'Sora, sans-serif' }}>
-            {title}
-          </span>
-          <span style={{ fontSize: 9, color: selected ? '#E8175D' : 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            {sublabel}
-          </span>
+    <div>
+      <PageHeader
+        title="Países"
+        subtitle="Configurá la herencia de cada módulo por país."
+        icon={Globe2}
+      />
+
+      {/* Stats + botón */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Stat label="Total" value={total} />
+          <Stat label="Activos" value={totalActive} />
+          {totalDraft > 0 && <Stat label="Drafts" value={totalDraft} accent="rgba(255,180,0,0.7)" />}
         </div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontFamily: 'Sora, sans-serif', lineHeight: 1.45 }}>
-          {description}
-        </div>
+        <motion.button
+          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+          onClick={() => setCreateOpen(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '9px 16px', borderRadius: 9, border: 'none',
+            background: '#E8175D', color: '#fff',
+            fontSize: 12, fontWeight: 700, fontFamily: 'Sora',
+            cursor: 'pointer', boxShadow: '0 4px 16px rgba(232,23,93,0.3)',
+          }}
+        >
+          <Plus size={14} />
+          Agregar país
+        </motion.button>
       </div>
-      {selected && <Check size={14} color="#E8175D" style={{ flexShrink: 0, marginTop: 8 }} />}
-    </button>
+
+      {/* Lista de países */}
+      {total === 0 ? (
+        <div style={{ padding: '48px 20px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 14 }}>
+          <Globe2 size={28} color="rgba(255,255,255,0.15)" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', fontFamily: 'Sora', marginBottom: 4 }}>
+            Sin países configurados
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono' }}>
+            Agregá el primer país para comenzar
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {countryConfigs.map(country => (
+            <CountryCard
+              key={country.id ?? country.countryCode}
+              country={country}
+              allCountries={countryConfigs}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Modal crear país */}
+      <CreateCountryModal open={createOpen} onClose={() => setCreateOpen(false)} />
+    </div>
+  )
+}
+
+// ─── Helpers UI ───────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }) {
+  if (status === 'active')   return null
+  if (status === 'draft')    return <span style={badgeStyle('rgba(255,180,0,0.15)', 'rgba(255,180,0,0.85)')}>DRAFT</span>
+  if (status === 'inactive') return <span style={badgeStyle('rgba(150,150,150,0.1)', 'rgba(255,255,255,0.3)')}>INACTIVO</span>
+  return null
+}
+
+function badgeStyle(bg, color) {
+  return { fontSize: 7, padding: '1px 5px', borderRadius: 3, background: bg, color, fontFamily: 'Space Mono', fontWeight: 700, letterSpacing: '0.05em' }
+}
+
+function SectionLabel({ icon: Icon, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <Icon size={11} color="rgba(255,255,255,0.35)" />
+      <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', fontFamily: 'Space Mono', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        {children}
+      </span>
+    </div>
   )
 }
 
 function FieldLabel({ children }) {
   return (
-    <div style={{
-      fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.4)',
-      fontFamily: 'Space Mono, monospace', textTransform: 'uppercase',
-      letterSpacing: '0.08em', marginBottom: 8,
-    }}>
+    <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
       {children}
     </div>
   )
 }
 
-function typeBtnStyle(active) {
+function quickBtnStyle(active) {
   return {
-    flex: 1, padding: '10px 12px', borderRadius: 8,
-    background: active ? 'rgba(232,23,93,0.12)' : 'rgba(255,255,255,0.03)',
-    border: active ? '1px solid rgba(232,23,93,0.45)' : '1px solid rgba(255,255,255,0.07)',
-    cursor: 'pointer', textAlign: 'left',
+    padding: '3px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 9,
+    fontFamily: 'Space Mono', fontWeight: 700,
+    background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.5)',
+  }
+}
+
+function primaryBtnStyle(disabled) {
+  return {
+    flex: 1, padding: '9px 22px', borderRadius: 7, border: 'none',
+    background: disabled ? 'rgba(232,23,93,0.3)' : '#E8175D',
+    color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'Sora',
+    cursor: disabled ? 'not-allowed' : 'pointer',
   }
 }
 
 function Stat({ label, value, accent }) {
   return (
-    <div style={{
-      padding: '7px 12px', borderRadius: 8,
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.06)',
-      display: 'flex', flexDirection: 'column', gap: 1,
-    }}>
-      <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: accent ?? 'rgba(255,255,255,0.9)', fontFamily: 'Sora, sans-serif' }}>
-        {value}
-      </div>
+    <div style={{ padding: '7px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', fontFamily: 'Space Mono', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: accent ?? 'rgba(255,255,255,0.9)', fontFamily: 'Sora' }}>{value}</div>
     </div>
   )
 }

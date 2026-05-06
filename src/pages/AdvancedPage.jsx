@@ -60,7 +60,7 @@ export default function AdvancedPage() {
     <div>
       <PageHeader
         title="Configuración avanzada"
-        subtitle="Variables de entorno y credenciales de servicios externos"
+        subtitle="Credenciales y conexiones de servicios externos. Solo visible para el equipo técnico."
         icon={Settings}
       />
 
@@ -76,14 +76,15 @@ export default function AdvancedPage() {
       }}>
         <AlertTriangle size={16} color="rgba(255,149,0,0.8)" style={{ flexShrink: 0, marginTop: 1 }} />
         <div style={{ fontSize: 11, color: 'rgba(255,149,0,0.8)', fontFamily: 'Space Mono', lineHeight: 1.5 }}>
-          Estos valores se incluyen en el JSON exportado. No compartas el archivo con datos sensibles sin cifrar.
+          Esta información es de uso técnico. No la compartas con personas fuera del equipo de integración.
         </div>
       </div>
 
-      <SectionCard title="Entorno del backend" icon={Settings} delay={0.05}>
+      <SectionCard title="Conexión al servidor" icon={Settings} delay={0.05}>
         <AdvancedField
           fieldKey="apiUrl"
-          label="URL del API"
+          label="URL del servidor"
+          description="Dirección principal del servidor de la app"
           placeholder="https://api.mi-empresa.com"
         />
 
@@ -98,7 +99,7 @@ export default function AdvancedPage() {
             textTransform: 'uppercase',
             marginBottom: 5,
           }}>
-            Entorno
+            Entorno de operación
           </label>
           <div style={{ display: 'flex', gap: 6 }}>
             {['dev', 'stag', 'prod'].map((env) => (
@@ -125,23 +126,30 @@ export default function AdvancedPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Servicios externos" delay={0.1}>
-        <AdvancedField fieldKey="sentryDsn" label="Sentry DSN" placeholder="https://xxx@sentry.io/xxx" />
-        <AdvancedField fieldKey="googleMapsApiKey" label="Google Maps API Key" placeholder="AIzaSy..." />
+      <SectionCard title="Integraciones técnicas" delay={0.1}>
+        <AdvancedField fieldKey="sentryDsn" label="Monitoreo de errores (Sentry DSN)" placeholder="https://xxx@sentry.io/xxx" />
+        <AdvancedField fieldKey="googleMapsApiKey" label="Clave de Google Maps" placeholder="AIzaSy..." />
       </SectionCard>
 
-      <SectionCard title="Centro de soporte" delay={0.15}>
+      <SectionCard title="Contacto y soporte" delay={0.15}>
         <AdvancedField
           fieldKey="supportWebUrl"
-          label="URL del centro de soporte"
-          description="Se muestra en la app como enlace de ayuda"
+          label="Sitio web de soporte"
+          description="Enlace de ayuda que aparece en la app"
           placeholder="https://soporte.mi-empresa.com"
           type="url"
         />
         <AdvancedField
-          fieldKey="supportPhone"
-          label="Teléfono de soporte"
-          description="Número al que el usuario puede llamar desde la app"
+          fieldKey="supportCenterPhone"
+          label="Teléfono del centro de soporte"
+          description="Número al que el mensajero llama para consultas o problemas generales"
+          placeholder="+506 0000-0000"
+          type="tel"
+        />
+        <AdvancedField
+          fieldKey="emergencyPhone"
+          label="Teléfono de emergencias"
+          description="Número de contacto urgente cuando el mensajero está en ruta (accidente, incidente de seguridad)"
           placeholder="+506 0000-0000"
           type="tel"
         />

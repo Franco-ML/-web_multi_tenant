@@ -2,24 +2,39 @@ import { useRef, useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Palette, Settings, Languages,
-  FileJson, Package, ChevronRight, Zap, Globe, Globe2, LayoutGrid,
-  ChevronDown, Plus, Check, Loader, X, Layers, FileText, GitBranch,
+  Settings, Image,
+  Smartphone, ChevronRight, Zap, Globe2, LayoutGrid,
+  ChevronDown, Plus, Check, Loader, X, Layers, FileText, Users, LogOut,
+  Shield, Building2,
 } from 'lucide-react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
 import { useTenantManager } from '../hooks/useTenantManager'
+import { useAuthStore } from '../store/useAuthStore'
+import { useUserRole } from '../hooks/useUserRole'
 import FlagImage from '../components/ui/FlagImage'
 
-const NAV_ITEMS = [
-  { to: '/branding',  label: 'Identidad',    desc: 'Logo y nombre',         Icon: Package },
-  { to: '/theme',     label: 'Tema visual',  desc: 'Colores y modo',        Icon: Palette },
-  { to: '/modules',   label: 'Módulos',      desc: 'Pantallas y funciones', Icon: LayoutGrid },
-  { to: '/language',  label: 'Idiomas',      desc: 'Idioma predeterminado', Icon: Languages },
-  { to: '/advanced',  label: 'Avanzado',     desc: 'API y credenciales',    Icon: Settings },
-  { to: '/countries', label: 'Países',       desc: 'Herencias y estado',    Icon: Globe2,     requiresSetup: true },
-  { to: '/documents',   label: 'Documentos',  desc: 'OCR por país',          Icon: FileText,   requiresSetup: true },
-  { to: '/inheritance', label: 'Herencias',   desc: 'Módulos por país',      Icon: GitBranch,  requiresSetup: true },
-  { to: '/export',    label: 'Exportar',     desc: 'JSON del tenant',       Icon: FileJson },
+// Nav según rol — se arma dinámicamente en el componente Sidebar
+const NAV_TENANT_BASE = [
+  { to: '/brand',     label: 'Imagen de marca', desc: 'Logo, colores y tema',    Icon: Image },
+  { to: '/modules',   label: 'Funciones',       desc: 'Pantallas y opciones',    Icon: LayoutGrid },
+  { to: '/countries', label: 'Países',          desc: 'Gestión y herencias',     Icon: Globe2,  requiresSetup: true },
+  { to: '/documents', label: 'Documentos',      desc: 'Validación por país',     Icon: FileText, requiresSetup: true },
+  { to: '/apk',       label: 'App móvil',       desc: 'Estado y descarga APK',   Icon: Smartphone },
+  { to: '/users',     label: 'Usuarios',        desc: 'Accesos y roles',         Icon: Users },
+]
+const NAV_ADVANCED = { to: '/advanced', label: 'Avanzado', desc: 'Servidor y credenciales', Icon: Settings }
+
+const NAV_COUNTRY_ADMIN = [
+  { to: '/brand',     label: 'Imagen de marca', desc: 'Logo y colores del país', Icon: Image },
+  { to: '/modules',   label: 'Funciones',       desc: 'Pantallas y opciones',    Icon: LayoutGrid },
+  { to: '/advanced',  label: 'Avanzado',        desc: 'Servidor y credenciales', Icon: Settings },
+  { to: '/documents', label: 'Documentos',      desc: 'Validación del país',     Icon: FileText },
+]
+
+const NAV_SYSTEM = [
+  { to: '/system/countries', label: 'Catálogo de países', desc: 'Países y documentos base', Icon: Globe2 },
+  { to: '/system/tenants',   label: 'Tenants',            desc: 'Empresas registradas',     Icon: Building2 },
+  { to: '/users',            label: 'Usuarios del sistema', desc: 'Admins y operadores',    Icon: Users },
 ]
 
 function TenantSwitcher({ primaryColor, onOpenCreateModal }) {
@@ -234,9 +249,7 @@ function TenantSwitcher({ primaryColor, onOpenCreateModal }) {
   )
 }
 
-function NavGroup({ label, items, primaryColor }) {
-  const tenantCode    = useTenantStore((s) => s.advanced.tenantCode)
-  const setupComplete = useTenantStore((s) => s.advanced._setupComplete === true)
+function NavGroup({ label, items, primaryColor, setupComplete, tenantCode }) {
   const visible = items.filter(i => !i.requiresSetup || setupComplete || !!tenantCode)
   return (
     <div>
@@ -332,9 +345,14 @@ function CountrySwitcher({ primaryColor }) {
   const setActiveCountry = useTenantStore((s) => s.setActiveCountry)
   const setupComplete    = useTenantStore((s) => s.advanced._setupComplete === true)
   const tenantCode       = useTenantStore((s) => s.advanced.tenantCode)
+  const { isCountryAdmin, assignedCountries } = useUserRole()
 
-  const activeCountries = countryConfigs.filter(c => (c.status ?? 'active') === 'active')
-  const draftCountries  = countryConfigs.filter(c => c.status === 'draft')
+  // L11: solo ve sus países asignados; L10: todos los activos
+  const allActive = countryConfigs.filter(c => (c.status ?? 'active') === 'active')
+  const activeCountries = isCountryAdmin
+    ? allActive.filter(c => assignedCountries.includes(c.countryCode))
+    : allActive
+  const draftCountries = isCountryAdmin ? [] : countryConfigs.filter(c => c.status === 'draft')
 
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -355,13 +373,13 @@ function CountrySwitcher({ primaryColor }) {
   function pickBase() {
     setActiveCountry(null)
     setOpen(false)
-    navigate('/branding')
+    navigate('/brand')
   }
 
-  function pickCountry(code) {
-    setActiveCountry(code)
+  function pickCountry(c) {
+    setActiveCountry(c.countryCode)
     setOpen(false)
-    navigate('/locale')
+    navigate(`/countries/${c.id}`)
   }
 
   return (
@@ -417,42 +435,45 @@ function CountrySwitcher({ primaryColor }) {
               boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
             }}
           >
-            {/* Base */}
-            <button
-              onClick={pickBase}
-              style={{
-                width: '100%', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 7,
-                background: !activeCountry ? `${primaryColor}14` : 'transparent',
-                border: 'none', cursor: 'pointer', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = `${primaryColor}1a`}
-              onMouseLeave={e => e.currentTarget.style.background = !activeCountry ? `${primaryColor}14` : 'transparent'}
-            >
-              <div style={{
-                width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                background: 'rgba(255,255,255,0.06)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Layers size={10} color="rgba(255,255,255,0.5)" />
-              </div>
-              <div style={{ flex: 1, textAlign: 'left' }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif' }}>
-                  Config base
-                </div>
-                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace' }}>
-                  general · heredada por todos
-                </div>
-              </div>
-              {!activeCountry && <Check size={10} color={primaryColor} />}
-            </button>
-
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 8px' }} />
+            {/* Base — solo para L10 (L11 no puede editar config base) */}
+            {!isCountryAdmin && (
+              <>
+                <button
+                  onClick={pickBase}
+                  style={{
+                    width: '100%', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 7,
+                    background: !activeCountry ? `${primaryColor}14` : 'transparent',
+                    border: 'none', cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = `${primaryColor}1a`}
+                  onMouseLeave={e => e.currentTarget.style.background = !activeCountry ? `${primaryColor}14` : 'transparent'}
+                >
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                    background: 'rgba(255,255,255,0.06)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Layers size={10} color="rgba(255,255,255,0.5)" />
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'left' }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Sora, sans-serif' }}>
+                      Config base
+                    </div>
+                    <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono, monospace' }}>
+                      general · heredada por todos
+                    </div>
+                  </div>
+                  {!activeCountry && <Check size={10} color={primaryColor} />}
+                </button>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 8px' }} />
+              </>
+            )}
 
             {/* Países activos del tenant */}
             {activeCountries.map(c => (
               <button
                 key={c.countryCode}
-                onClick={() => pickCountry(c.countryCode)}
+                onClick={() => pickCountry(c)}
                 style={{
                   width: '100%', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 7,
                   background: activeCountry === c.countryCode ? `${primaryColor}14` : 'transparent',
@@ -893,8 +914,30 @@ function FieldLabel({ children }) {
 }
 
 export default function Sidebar() {
-  const primaryColor = useTenantStore((s) => s.theme.light?.primary ?? '#E8175D')
+  const primaryColor  = useTenantStore((s) => s.theme.light?.primary ?? '#E8175D')
+  const activeCountry = useTenantStore((s) => s.activeCountry)
+  const setupComplete = useTenantStore((s) => s.advanced._setupComplete === true)
+  const tenantCode    = useTenantStore((s) => s.advanced.tenantCode)
   const [createOpen, setCreateOpen] = useState(false)
+  const user   = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
+  const { isSystem, isCountryAdmin, isSuperTenant } = useUserRole()
+
+  // ─── Nav items según rol y contexto ───────────────────────────────────────
+  const navItems = (() => {
+    if (isSystem) return NAV_SYSTEM
+
+    if (isCountryAdmin) return NAV_COUNTRY_ADMIN
+
+    // L10: base config → sin Avanzado; país seleccionado → con Avanzado
+    const items = [...NAV_TENANT_BASE]
+    if (activeCountry) {
+      // Insertar Avanzado después de Funciones (índice 1)
+      items.splice(2, 0, NAV_ADVANCED)
+    }
+    return items
+  })()
 
   return (
     <>
@@ -953,38 +996,76 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <TenantSwitcher primaryColor={primaryColor} onOpenCreateModal={() => setCreateOpen(true)} />
-        <CountrySwitcher primaryColor={primaryColor} />
+        {/* TenantSwitcher: solo L10 puede cambiar de tenant */}
+        {isSuperTenant && (
+          <TenantSwitcher primaryColor={primaryColor} onOpenCreateModal={() => setCreateOpen(true)} />
+        )}
+        {/* CountrySwitcher: L10 y L11 (L11 no verá "Config base") */}
+        {!isSystem && (
+          <CountrySwitcher primaryColor={primaryColor} />
+        )}
       </div>
 
       {/* Navigation */}
       <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
-        <NavGroup label="Configuración" items={NAV_ITEMS} primaryColor={primaryColor} />
+        <NavGroup
+          label={isSystem ? 'Sistema' : 'Configuración'}
+          items={navItems}
+          primaryColor={primaryColor}
+          setupComplete={setupComplete}
+          tenantCode={tenantCode}
+        />
       </nav>
 
-      {/* Footer */}
+      {/* Footer — usuario + logout */}
       <div style={{
-        padding: '14px 20px',
+        padding: '12px 14px',
         borderTop: '1px solid rgba(255,255,255,0.06)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
       }}>
-        <div style={{
-          width: 6,
-          height: 6,
-          borderRadius: '50%',
-          background: '#34C759',
-          boxShadow: '0 0 6px #34C759',
-        }} />
-        <span style={{
-          fontSize: 9,
-          color: 'rgba(255,255,255,0.25)',
-          fontFamily: 'Space Mono, monospace',
-          letterSpacing: '0.04em',
-        }}>
-          tenant-admin v0.1
-        </span>
+        {/* Info del usuario */}
+        {user && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 9,
+            padding: '8px 10px', borderRadius: 10,
+            background: 'rgba(255,255,255,0.03)',
+            marginBottom: 8,
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              background: `linear-gradient(135deg, ${primaryColor}55, ${primaryColor}22)`,
+              border: `1px solid ${primaryColor}33`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 700, color: primaryColor, fontFamily: 'Sora',
+            }}>
+              {(user.username || user.email)[0].toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.75)', fontFamily: 'Sora', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user.username}
+              </div>
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.25)', fontFamily: 'Space Mono', letterSpacing: '0.03em' }}>
+                L{user.rol?.level} · {user.rol?.name}
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Logout */}
+        <button
+          onClick={() => { logout(); navigate('/login', { replace: true }) }}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 7,
+            padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
+            background: 'transparent', border: '1px solid rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.3)', fontSize: 10,
+            fontFamily: 'Space Mono', letterSpacing: '0.03em',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,59,48,0.07)'; e.currentTarget.style.borderColor = 'rgba(255,59,48,0.2)'; e.currentTarget.style.color = 'rgba(255,59,48,0.7)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.3)' }}
+        >
+          <LogOut size={11} />
+          Cerrar sesión
+        </button>
       </div>
     </aside>
 

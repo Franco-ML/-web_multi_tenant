@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutGrid, Lock, LogIn, ClipboardList, Map, User,
   ChevronDown, ChevronUp, Phone, Mail, Plus, Trash2, FileText, Eye, EyeOff,
-  Smartphone, Camera, Moon,
+  Smartphone, Camera, Moon, KeyRound, AlertCircle, MailOpen,
 } from 'lucide-react'
 import { useTenantStore } from '../store/useTenantStore'
 import { useSimulatorStore } from '../store/useSimulatorStore'
@@ -201,12 +201,12 @@ function ModuleCard({ icon: Icon, label, description, required, enabled, onToggl
 function LoginModule() {
   const login = useTenantStore((s) => s.login)
   const setLoginField = useTenantStore((s) => s.setLoginField)
+  const [pinOpen, setPinOpen] = useState(false)
 
   const bothDisabled = !login.phoneEnabled && !login.emailEnabled
 
   function toggle(field) {
     const next = !login[field]
-    // Evita desactivar ambos
     if (!next && (field === 'phoneEnabled' ? !login.emailEnabled : !login.phoneEnabled)) return
     setLoginField(field, next)
   }
@@ -214,19 +214,19 @@ function LoginModule() {
   return (
     <ModuleCard
       icon={LogIn}
-      label="Login"
-      description="Pantalla de inicio de sesión"
+      label="Inicio de sesión"
+      description="Métodos de acceso y seguridad de la app"
       required
       defaultOpen
     >
       <div style={{ marginBottom: 8, fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono' }}>
-        Métodos de inicio de sesión disponibles · al menos uno requerido
+        Métodos de acceso · al menos uno requerido
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <SubToggle
           icon={Smartphone}
-          label="Teléfono"
-          description="Inicio de sesión con número de teléfono + OTP"
+          label="Número de teléfono"
+          description="El mensajero ingresa su teléfono y recibe un código de verificación"
           checked={login.phoneEnabled}
           onChange={() => toggle('phoneEnabled')}
           disabled={login.phoneEnabled && !login.emailEnabled}
@@ -234,7 +234,7 @@ function LoginModule() {
         <SubToggle
           icon={Mail}
           label="Correo electrónico"
-          description="Inicio de sesión con email + contraseña"
+          description="El mensajero ingresa su correo y contraseña"
           checked={login.emailEnabled}
           onChange={() => toggle('emailEnabled')}
           disabled={login.emailEnabled && !login.phoneEnabled}
@@ -245,6 +245,84 @@ function LoginModule() {
           Debe haber al menos un método activo
         </div>
       )}
+
+      {/* PIN de seguridad */}
+      <div
+        onClick={() => setPinOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginTop: 14,
+          padding: '8px 12px', borderRadius: 8, cursor: 'pointer', userSelect: 'none',
+          background: pinOpen ? 'rgba(88,86,214,0.08)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${pinOpen ? 'rgba(88,86,214,0.25)' : 'rgba(255,255,255,0.06)'}`,
+          transition: 'all 0.2s',
+        }}
+      >
+        <KeyRound size={13} color={pinOpen ? '#5856D6' : 'rgba(255,255,255,0.3)'} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.8)', fontFamily: 'Sora' }}>
+            PIN de seguridad
+          </div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontFamily: 'Space Mono', marginTop: 1 }}>
+            Código numérico requerido al abrir la app
+          </div>
+        </div>
+        {pinOpen ? <ChevronUp size={12} color="rgba(255,255,255,0.25)" /> : <ChevronDown size={12} color="rgba(255,255,255,0.25)" />}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {pinOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div style={{ paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <SubToggle
+                icon={KeyRound}
+                label="Requerir PIN"
+                description="El mensajero debe crear un PIN al registrarse"
+                checked={login.pinRequired ?? true}
+                onChange={(v) => setLoginField('pinRequired', v)}
+              />
+              {(login.pinRequired ?? true) && (
+                <>
+                  <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.3)', fontFamily: 'Space Mono', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                      Longitud del PIN
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {[4, 6, 8].map(len => (
+                        <button
+                          key={len}
+                          onClick={() => setLoginField('pinLength', len)}
+                          style={{
+                            flex: 1, padding: '7px', borderRadius: 7,
+                            border: (login.pinLength ?? 4) === len ? '1px solid rgba(88,86,214,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                            background: (login.pinLength ?? 4) === len ? 'rgba(88,86,214,0.15)' : 'transparent',
+                            color: (login.pinLength ?? 4) === len ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)',
+                            fontSize: 12, fontFamily: 'Space Mono', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                          }}
+                        >
+                          {len} {'●'.repeat(len > 4 ? 4 : len)}{len > 4 ? '…' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <SubToggle
+                    icon={MailOpen}
+                    label="Recuperar PIN por correo"
+                    description="El mensajero puede restablecer su PIN desde su email"
+                    checked={login.pinRecoveryViaEmail ?? true}
+                    onChange={(v) => setLoginField('pinRecoveryViaEmail', v)}
+                  />
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </ModuleCard>
   )
 }
@@ -415,21 +493,18 @@ function StepRow({ step, stepIndex, isExpanded, onToggle, onEnableToggle, update
                         <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.65)', fontFamily: 'Sora' }}>
                           {doc.label}
                         </span>
-                        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', fontFamily: 'Space Mono' }}>
-                          {doc.ocr?.documentType}
-                        </span>
                         {doc.ocr?.autofill && (
                           <span style={{
                             fontSize: 8, padding: '1px 5px', borderRadius: 3,
                             background: 'rgba(110,231,183,0.1)', color: 'rgba(110,231,183,0.7)',
                             fontFamily: 'Space Mono',
-                          }}>OCR</span>
+                          }}>Lectura auto</span>
                         )}
                       </div>
                     ))}
                   </div>
                   <div style={{ marginTop: 4, fontSize: 9, color: 'rgba(255,255,255,0.12)', fontFamily: 'Space Mono' }}>
-                    Edición avanzada de documentos/OCR via JSON export
+                    Edición avanzada de documentos en la sección Documentos
                   </div>
                 </div>
               )}
@@ -525,12 +600,24 @@ function RoutesModule() {
   return (
     <ModuleCard
       icon={Map}
-      label="Rutas"
-      description="Tab de rutas y gestión de entregas"
+      label="Rutas y entregas"
+      description="Tab de rutas y gestión de entregas en tiempo real"
       enabled={enabled}
       onToggle={(v) => setFeature('routesEnabled', v)}
       accentColor="#34C759"
     >
+      {/* Banner de infraestructura requerida */}
+      <div style={{
+        display: 'flex', gap: 8, padding: '10px 12px', marginBottom: 10,
+        background: 'rgba(255,149,0,0.06)', border: '1px solid rgba(255,149,0,0.2)',
+        borderRadius: 8,
+      }}>
+        <AlertCircle size={14} color="rgba(255,149,0,0.7)" style={{ flexShrink: 0, marginTop: 1 }} />
+        <div style={{ fontSize: 10, color: 'rgba(255,149,0,0.7)', fontFamily: 'Space Mono', lineHeight: 1.5 }}>
+          Este módulo requiere el servidor de tracking activo. Actívalo solo cuando la infraestructura de rutas esté lista.
+        </div>
+      </div>
+
       <AnimatePresence>
         {enabled && (
           <motion.div
@@ -539,15 +626,15 @@ function RoutesModule() {
           >
             <SubToggle
               icon={Map}
-              label="Google Maps"
-              description="Mapa integrado en el detalle de ruta"
+              label="Mapa integrado"
+              description="Muestra el mapa en el detalle de cada entrega"
               checked={features.googleMapsEnabled}
               onChange={(v) => setFeature('googleMapsEnabled', v)}
             />
             <SubToggle
               icon={Camera}
-              label="Escaneo de documentos"
-              description="Cámara para escanear órdenes y documentos"
+              label="Captura de documentos"
+              description="Cámara para fotografiar órdenes y comprobantes"
               checked={features.scanningEnabled}
               onChange={(v) => setFeature('scanningEnabled', v)}
             />
@@ -610,8 +697,8 @@ export default function ModulesPage() {
   return (
     <div>
       <PageHeader
-        title="Módulos"
-        subtitle="Pantallas y funciones disponibles en la app. Los módulos requeridos no se pueden desactivar."
+        title="Pantallas y funciones"
+        subtitle="Configura qué secciones y opciones estarán disponibles en la app del mensajero."
         icon={LayoutGrid}
       />
       <LoginModule />

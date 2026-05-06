@@ -117,6 +117,9 @@ export function useTenantManager() {
       store.loadFromJson(data)
     } catch {
       store.resetToDefaults()
+    }
+    // Garantizar que tenantCode quede siempre seteado después de cargar
+    if (!useTenantStore.getState().advanced.tenantCode) {
       store.setAdvancedField('tenantCode', targetCode)
     }
     setSwitching(false)
