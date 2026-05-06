@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Users, UserPlus, Shield, Globe2, Trash2, RefreshCw, Eye, EyeOff, X, Info, Search, ChevronDown, Ban, Check } from 'lucide-react'
 import PageHeader from '../components/ui/PageHeader'
 import { useTenantStore } from '../store/useTenantStore'
@@ -39,20 +40,54 @@ function RolBadge({ level, name }) {
 }
 
 function CustomSelect({ value, onChange, options, placeholder }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [open, setOpen]   = useState(false)
+  const [rect,  setRect]  = useState(null)
+  const triggerRef        = useRef(null)
+
+  useLayoutEffect(() => {
+    if (open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect()
+      setRect(r)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
+    function handleClick(e) {
+      if (triggerRef.current && !triggerRef.current.contains(e.target)) setOpen(false)
+    }
+    function handleScroll() { setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('scroll', handleScroll, true)
+    }
   }, [open])
 
-  const selected = options.find(o => String(o.value) === String(value))
+  const selected   = options.find(o => String(o.value) === String(value))
+  const spaceBelow = rect ? window.innerHeight - rect.bottom : 999
+  const openUp     = rect && spaceBelow < 220 && rect.top > 220
+
+  const dropdownStyle = rect ? {
+    position: 'fixed',
+    left:     rect.left,
+    width:    rect.width,
+    zIndex:   9999,
+    ...(openUp
+      ? { bottom: window.innerHeight - rect.top + 4 }
+      : { top: rect.bottom + 4 }
+    ),
+    background: '#0D1017',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    overflow: 'hidden auto',
+    maxHeight: 220,
+    boxShadow: '0 10px 36px rgba(0,0,0,0.8)',
+  } : null
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div ref={triggerRef} style={{ position: 'relative' }}>
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
@@ -70,20 +105,15 @@ function CustomSelect({ value, onChange, options, placeholder }) {
           style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s', flexShrink: 0 }} />
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 300,
-          background: '#0D1017', border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 10, overflow: 'hidden auto', maxHeight: 200,
-          boxShadow: '0 10px 36px rgba(0,0,0,0.7)',
-        }}>
+      {open && dropdownStyle && createPortal(
+        <div style={dropdownStyle}>
           {options.map((o, i) => {
             const isSel = String(o.value) === String(value)
             return (
               <button
                 key={o.value}
                 type="button"
-                onClick={() => { onChange(String(o.value)); setOpen(false) }}
+                onMouseDown={e => { e.preventDefault(); onChange(String(o.value)); setOpen(false) }}
                 style={{
                   width: '100%', padding: '9px 12px', textAlign: 'left', cursor: 'pointer',
                   background: isSel ? 'rgba(232,23,93,0.1)' : 'transparent', border: 'none',
@@ -101,7 +131,8 @@ function CustomSelect({ value, onChange, options, placeholder }) {
               </button>
             )
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
