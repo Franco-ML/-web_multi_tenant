@@ -196,13 +196,15 @@ function CreateUserModal({ roles, tenantCode, countryConfigs, isSystem, allTenan
       position: 'fixed', inset: 0, zIndex: 1000,
       background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        width: 440, background: '#0D1017',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 20, overflow: 'hidden',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-      }}>
+    }} onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div
+        onMouseDown={e => e.stopPropagation()}
+        style={{
+          width: 440, background: '#0D1017',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 20, overflow: 'hidden',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+        }}>
         <div style={{
           padding: '20px 24px 16px',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
