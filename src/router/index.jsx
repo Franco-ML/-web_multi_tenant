@@ -23,6 +23,7 @@ import SystemTenantsPage from '../pages/SystemTenantsPage'
 import DocumentsPage from '../pages/DocumentsPage'
 import InheritancePage from '../pages/InheritancePage'
 import UsersPage from '../pages/UsersPage'
+import PaymentMethodsPage from '../pages/PaymentMethodsPage'
 
 function RootRedirect() {
   const { isSystem, isSuperTenant } = useUserRole()
@@ -72,6 +73,7 @@ export const router = createBrowserRouter([
       { path: 'documents',    element: <DocumentsPage /> },
       { path: 'inheritance',  element: <InheritancePage /> },
       { path: 'users',        element: <UsersPage /> },
+      { path: 'payments',     element: <PaymentMethodsPage /> },
       // Rutas legacy mantenidas por compatibilidad / uso interno
       { path: 'branding',     element: <BrandingPage /> },
       { path: 'theme',        element: <ThemePage /> },

@@ -5,7 +5,7 @@ import {
   Settings, Image,
   Smartphone, ChevronRight, Zap, Globe2, LayoutGrid,
   ChevronDown, Plus, Check, Loader, X, Layers, FileText, Users, LogOut,
-  Shield, Building2,
+  Shield, Building2, CreditCard, GitBranch,
 } from 'lucide-react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
 import { useTenantManager } from '../hooks/useTenantManager'
@@ -15,20 +15,23 @@ import FlagImage from '../components/ui/FlagImage'
 
 // Nav según rol — se arma dinámicamente en el componente Sidebar
 const NAV_TENANT_BASE = [
-  { to: '/brand',     label: 'Imagen de marca', desc: 'Logo, colores y tema',    Icon: Image },
-  { to: '/modules',   label: 'Funciones',       desc: 'Pantallas y opciones',    Icon: LayoutGrid },
-  { to: '/countries', label: 'Países',          desc: 'Gestión y herencias',     Icon: Globe2,  requiresSetup: true },
-  { to: '/documents', label: 'Documentos',      desc: 'Validación por país',     Icon: FileText, requiresSetup: true },
-  { to: '/apk',       label: 'App móvil',       desc: 'Estado y descarga APK',   Icon: Smartphone },
-  { to: '/users',     label: 'Usuarios',        desc: 'Accesos y roles',         Icon: Users },
+  { to: '/brand',       label: 'Imagen de marca',  desc: 'Logo, colores y tema',         Icon: Image },
+  { to: '/modules',     label: 'Funciones',        desc: 'Pantallas y opciones',         Icon: LayoutGrid },
+  { to: '/payments',    label: 'Métodos de pago',  desc: 'Efectivo, tarjeta y otros',    Icon: CreditCard },
+  { to: '/advanced',    label: 'Avanzado',         desc: 'Servidor y credenciales',      Icon: Settings },
+  { to: '/countries',   label: 'Países',           desc: 'Gestión por país',             Icon: Globe2,    requiresSetup: true },
+  { to: '/inheritance', label: 'Herencias',        desc: 'Quién hereda de quién',        Icon: GitBranch, requiresSetup: true },
+  { to: '/documents',   label: 'Documentos',       desc: 'Validación por país',          Icon: FileText,  requiresSetup: true },
+  { to: '/apk',         label: 'App móvil',        desc: 'Estado y descarga APK',        Icon: Smartphone },
+  { to: '/users',       label: 'Usuarios',         desc: 'Accesos y roles',              Icon: Users },
 ]
-const NAV_ADVANCED = { to: '/advanced', label: 'Avanzado', desc: 'Servidor y credenciales', Icon: Settings }
 
 const NAV_COUNTRY_ADMIN = [
-  { to: '/brand',     label: 'Imagen de marca', desc: 'Logo y colores del país', Icon: Image },
-  { to: '/modules',   label: 'Funciones',       desc: 'Pantallas y opciones',    Icon: LayoutGrid },
-  { to: '/advanced',  label: 'Avanzado',        desc: 'Servidor y credenciales', Icon: Settings },
-  { to: '/documents', label: 'Documentos',      desc: 'Validación del país',     Icon: FileText },
+  { to: '/brand',     label: 'Imagen de marca', desc: 'Logo y colores del país',  Icon: Image },
+  { to: '/modules',   label: 'Funciones',       desc: 'Pantallas y opciones',     Icon: LayoutGrid },
+  { to: '/payments',  label: 'Métodos de pago', desc: 'Efectivo, tarjeta y otros',Icon: CreditCard },
+  { to: '/advanced',  label: 'Avanzado',        desc: 'Servidor y credenciales',  Icon: Settings },
+  { to: '/documents', label: 'Documentos',      desc: 'Validación del país',      Icon: FileText },
 ]
 
 const NAV_SYSTEM = [
@@ -930,13 +933,7 @@ export default function Sidebar() {
 
     if (isCountryAdmin) return NAV_COUNTRY_ADMIN
 
-    // L10: base config → sin Avanzado; país seleccionado → con Avanzado
-    const items = [...NAV_TENANT_BASE]
-    if (activeCountry) {
-      // Insertar Avanzado después de Funciones (índice 1)
-      items.splice(2, 0, NAV_ADVANCED)
-    }
-    return items
+    return NAV_TENANT_BASE
   })()
 
   return (
