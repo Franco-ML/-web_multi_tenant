@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Package, Palette, Globe, ChevronRight, ChevronLeft, Check, X, Plus, Sun, Moon } from 'lucide-react'
 import { useTenantStore, COUNTRY_CATALOG } from '../store/useTenantStore'
+import { saveDraft } from '../hooks/useTenantManager'
 import LogoUploader from '../components/config/LogoUploader'
 import FlagImage from '../components/ui/FlagImage'
 
@@ -357,14 +358,16 @@ export default function SetupPage() {
 
   const [step, setStep] = useState(0)
 
-  function finish() {
+  function completeSetup() {
     setAdvancedField('_setupComplete', true)
-    navigate('/branding')
+    // Sincronizar el draft para que un futuro switchTenant no cargue _setupComplete = false
+    const state = useTenantStore.getState()
+    saveDraft(state.advanced.tenantCode, state)
+    navigate('/brand')
   }
 
-  function skip() {
-    navigate('/branding')
-  }
+  function finish() { completeSetup() }
+  function skip()   { completeSetup() }
 
   const { Component } = STEPS[step]
   const isLast  = step === STEPS.length - 1

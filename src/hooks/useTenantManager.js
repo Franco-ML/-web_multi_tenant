@@ -6,7 +6,7 @@ import { apiFetch } from '../lib/api'
 const SERVER_URL = import.meta.env.VITE_TENANT_API_URL ?? 'http://localhost:3001'
 const DRAFT_PREFIX = 'moover-draft-'
 
-function saveDraft(tenantCode, state) {
+export function saveDraft(tenantCode, state) {
   if (!tenantCode) return
   try {
     const { branding, countryConfigs, theme, features, registration, advanced, i18n, login } = state
