@@ -26,15 +26,19 @@ import UsersPage from '../pages/UsersPage'
 
 function RootRedirect() {
   const { isSystem, isSuperTenant } = useUserRole()
+  const user          = useAuthStore(s => s.user)
   const setupComplete = useTenantStore(s => s.advanced._setupComplete)
   const tenantCode    = useTenantStore(s => s.advanced.tenantCode)
 
   if (isSystem) return <Navigate to="/system/tenants" replace />
 
-  if (isSuperTenant && !setupComplete) {
-    // Sin tenantCode en el store → primer acceso, ir al onboarding
-    // Con tenantCode → retomó a mitad de wizard
-    return <Navigate to={tenantCode ? '/setup' : '/onboarding'} replace />
+  if (isSuperTenant) {
+    // Si el usuario YA tiene un tenant en la BD (auth store), saltar onboarding.
+    // DashboardLayout cargará su config vía switchTenant.
+    const hasTenantInDb = (user?.tenants?.length ?? 0) > 0
+    if (!hasTenantInDb && !setupComplete) {
+      return <Navigate to={tenantCode ? '/setup' : '/onboarding'} replace />
+    }
   }
 
   return <Navigate to="/brand" replace />
