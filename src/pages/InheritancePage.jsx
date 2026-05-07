@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useLayoutEffect, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GitBranch, Image, Palette, LayoutGrid, FileText, CreditCard, Settings,
@@ -51,10 +52,71 @@ function cellState(country, moduleKey) {
   return country.moduleModes?.[moduleKey] ?? 'inherit'
 }
 
+// ─── Dropdown con portal — escapa overflow del contenedor padre ───────────────
+
+function PortalDropdown({ open, anchorRect, onClose, children, minWidth = 220, align = 'left' }) {
+  if (!open || !anchorRect) return null
+
+  const spaceBelow = window.innerHeight - anchorRect.bottom
+  const openUp = spaceBelow < 220 && anchorRect.top > 220
+
+  const left = align === 'right'
+    ? anchorRect.right - minWidth
+    : anchorRect.left
+
+  // Mantener dentro del viewport (no recortar a la derecha)
+  const adjustedLeft = Math.max(8, Math.min(left, window.innerWidth - minWidth - 8))
+
+  const style = {
+    position: 'fixed',
+    left: adjustedLeft,
+    minWidth,
+    zIndex: 9999,
+    background: '#0D1017',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    overflow: 'hidden',
+    boxShadow: '0 12px 36px rgba(0,0,0,0.7)',
+    ...(openUp
+      ? { bottom: window.innerHeight - anchorRect.top + 4 }
+      : { top: anchorRect.bottom + 4 }
+    ),
+  }
+
+  return createPortal(
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+      <div style={style}>{children}</div>
+    </>,
+    document.body
+  )
+}
+
+function useDropdown() {
+  const [open, setOpen]   = useState(false)
+  const [rect, setRect]   = useState(null)
+  const triggerRef        = useRef(null)
+
+  useLayoutEffect(() => {
+    if (open && triggerRef.current) {
+      setRect(triggerRef.current.getBoundingClientRect())
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    function close() { setOpen(false) }
+    document.addEventListener('scroll', close, true)
+    return () => document.removeEventListener('scroll', close, true)
+  }, [open])
+
+  return { open, setOpen, rect, triggerRef }
+}
+
 // ─── Celda de la matriz ────────────────────────────────────────────────────────
 
 function MatrixCell({ country, moduleKey, allCountries, onModeChange, onHover }) {
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, rect, triggerRef } = useDropdown()
   const state = cellState(country, moduleKey)
   const isOwn = state === 'own'
   const isDocs = moduleKey === 'documents'
@@ -69,6 +131,7 @@ function MatrixCell({ country, moduleKey, allCountries, onModeChange, onHover })
 
   return (
     <div
+      ref={triggerRef}
       style={{ position: 'relative' }}
       onMouseEnter={() => onHover({ country, moduleKey, state })}
       onMouseLeave={() => onHover(null)}
@@ -104,35 +167,24 @@ function MatrixCell({ country, moduleKey, allCountries, onModeChange, onHover })
         )}
       </button>
 
-      {open && (
-        <>
-          <div onClick={() => setOpen(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 11,
-            background: '#0D1017', border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 10, overflow: 'hidden',
-            boxShadow: '0 12px 36px rgba(0,0,0,0.7)', minWidth: 200,
-          }}>
-            <button onClick={() => handleSelect('inherit')} style={menuItemStyle(state === 'inherit')}
-              onMouseEnter={e => { if (state !== 'inherit') e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-              onMouseLeave={e => { if (state !== 'inherit') e.currentTarget.style.background = 'transparent' }}>
-              {sourceCountry
-                ? <FlagImage code={sourceCountry.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
-                : <Globe2 size={11} color={state === 'inherit' ? ACCENT : 'rgba(255,255,255,0.5)'} />}
-              <span>Heredar de {sourceCountry ? sourceCountry.name : 'base'}</span>
-              {state === 'inherit' && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
-            </button>
-            <button onClick={() => handleSelect('own')} style={menuItemStyle(state === 'own')}
-              onMouseEnter={e => { if (state !== 'own') e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-              onMouseLeave={e => { if (state !== 'own') e.currentTarget.style.background = 'transparent' }}>
-              <FlagImage code={country.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
-              <span>Configuración propia</span>
-              {state === 'own' && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
-            </button>
-          </div>
-        </>
-      )}
+      <PortalDropdown open={open} anchorRect={rect} onClose={() => setOpen(false)} minWidth={220}>
+        <button onClick={() => handleSelect('inherit')} style={menuItemStyle(state === 'inherit')}
+          onMouseEnter={e => { if (state !== 'inherit') e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+          onMouseLeave={e => { if (state !== 'inherit') e.currentTarget.style.background = 'transparent' }}>
+          {sourceCountry
+            ? <FlagImage code={sourceCountry.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
+            : <Globe2 size={11} color={state === 'inherit' ? ACCENT : 'rgba(255,255,255,0.5)'} />}
+          <span>Heredar de {sourceCountry ? sourceCountry.name : 'base'}</span>
+          {state === 'inherit' && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
+        </button>
+        <button onClick={() => handleSelect('own')} style={menuItemStyle(state === 'own')}
+          onMouseEnter={e => { if (state !== 'own') e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+          onMouseLeave={e => { if (state !== 'own') e.currentTarget.style.background = 'transparent' }}>
+          <FlagImage code={country.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
+          <span>Configuración propia</span>
+          {state === 'own' && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
+        </button>
+      </PortalDropdown>
     </div>
   )
 }
@@ -152,17 +204,16 @@ function menuItemStyle(active) {
 // ─── Selector de fuente por país ───────────────────────────────────────────────
 
 function SourceSelector({ country, allCountries, onChange }) {
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, rect, triggerRef } = useDropdown()
   const source = country.inheritsFrom ?? 'base'
   const sourceCountry = source !== 'base' ? allCountries.find(c => c.id === source) : null
 
-  // Países que generarían un ciclo si este país heredara de ellos
   const candidates = allCountries
     .filter(c => c.id !== country.id)
     .map(c => ({ ...c, wouldCycle: wouldCreateCycle(allCountries, country.id, c.id) }))
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={triggerRef} style={{ position: 'relative' }}>
       <button onClick={() => setOpen(v => !v)}
         style={{
           display: 'flex', alignItems: 'center', gap: 5,
@@ -179,58 +230,47 @@ function SourceSelector({ country, allCountries, onChange }) {
         <ChevronRight size={9} style={{ transform: open ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s' }} />
       </button>
 
-      {open && (
-        <>
-          <div onClick={() => setOpen(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 11,
-            background: '#0D1017', border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 10, overflow: 'hidden', minWidth: 240,
-            boxShadow: '0 12px 36px rgba(0,0,0,0.7)',
-          }}>
-            <button onClick={() => { onChange(country.id, 'base'); setOpen(false) }} style={menuItemStyle(source === 'base')}
-              onMouseEnter={e => { if (source !== 'base') e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-              onMouseLeave={e => { if (source !== 'base') e.currentTarget.style.background = 'transparent' }}>
-              <Globe2 size={11} />
-              <span>Configuración base</span>
-              {source === 'base' && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
+      <PortalDropdown open={open} anchorRect={rect} onClose={() => setOpen(false)} minWidth={240}>
+        <button onClick={() => { onChange(country.id, 'base'); setOpen(false) }} style={menuItemStyle(source === 'base')}
+          onMouseEnter={e => { if (source !== 'base') e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+          onMouseLeave={e => { if (source !== 'base') e.currentTarget.style.background = 'transparent' }}>
+          <Globe2 size={11} />
+          <span>Configuración base</span>
+          {source === 'base' && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
+        </button>
+        {candidates.map(c => {
+          const disabled = c.wouldCycle
+          return (
+            <button
+              key={c.id}
+              onClick={() => { if (!disabled) { onChange(country.id, c.id); setOpen(false) } }}
+              disabled={disabled}
+              title={disabled ? `${c.name} hereda (directa o indirectamente) de ${country.name}, eso crearía un ciclo` : undefined}
+              style={{
+                ...menuItemStyle(source === c.id),
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: disabled ? 0.45 : 1,
+              }}
+              onMouseEnter={e => { if (!disabled && source !== c.id) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+              onMouseLeave={e => { if (!disabled && source !== c.id) e.currentTarget.style.background = 'transparent' }}
+            >
+              <FlagImage code={c.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
+              <span>{c.name}</span>
+              {disabled && (
+                <span style={{
+                  marginLeft: 'auto', fontSize: 7, padding: '2px 5px', borderRadius: 3,
+                  background: 'rgba(255,180,0,0.1)', border: '1px solid rgba(255,180,0,0.2)',
+                  color: 'rgba(255,180,0,0.8)', fontFamily: FONT_MONO, fontWeight: 700,
+                  letterSpacing: '0.04em',
+                }}>
+                  ciclo
+                </span>
+              )}
+              {!disabled && source === c.id && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
             </button>
-            {candidates.map(c => {
-              const disabled = c.wouldCycle
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => { if (!disabled) { onChange(country.id, c.id); setOpen(false) } }}
-                  disabled={disabled}
-                  title={disabled ? `${c.name} hereda (directa o indirectamente) de ${country.name}, eso crearía un ciclo` : undefined}
-                  style={{
-                    ...menuItemStyle(source === c.id),
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: disabled ? 0.45 : 1,
-                  }}
-                  onMouseEnter={e => { if (!disabled && source !== c.id) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                  onMouseLeave={e => { if (!disabled && source !== c.id) e.currentTarget.style.background = 'transparent' }}
-                >
-                  <FlagImage code={c.countryCode} size={11} style={{ height: 8, borderRadius: 1 }} />
-                  <span>{c.name}</span>
-                  {disabled && (
-                    <span style={{
-                      marginLeft: 'auto', fontSize: 7, padding: '2px 5px', borderRadius: 3,
-                      background: 'rgba(255,180,0,0.1)', border: '1px solid rgba(255,180,0,0.2)',
-                      color: 'rgba(255,180,0,0.8)', fontFamily: FONT_MONO, fontWeight: 700,
-                      letterSpacing: '0.04em',
-                    }}>
-                      ciclo
-                    </span>
-                  )}
-                  {!disabled && source === c.id && <Check size={11} color={ACCENT} style={{ marginLeft: 'auto' }} />}
-                </button>
-              )
-            })}
-          </div>
-        </>
-      )}
+          )
+        })}
+      </PortalDropdown>
     </div>
   )
 }
